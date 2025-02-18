@@ -122,3 +122,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+recsys-challenge-2015/
+
+eda/prepared_merge/
+
+*.parquet
+
+E-commerce user activities (dataset 230401_230715)/
+
+amazon/
