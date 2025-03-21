@@ -1,0 +1,19 @@
+[project]
+name = "recsys-rl"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "category-encoders>=2.8.1",
+    "gym>=0.26.2",
+    "jupyter>=1.1.1",
+    "matplotlib>=3.10.1",
+    "notebook>=7.3.3",
+    "numpy>=2.2.4",
+    "optuna>=4.2.1",
+    "pandas>=2.2.3",
+    "scikit-learn>=1.6.1",
+    "torch>=2.6.0",
+    "tqdm>=4.67.1",
+]

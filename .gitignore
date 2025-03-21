@@ -132,3 +132,7 @@ eda/prepared_merge/
 E-commerce user activities (dataset 230401_230715)/
 
 amazon/
+datasets/*
+*.html
+*.db
+*.pth
