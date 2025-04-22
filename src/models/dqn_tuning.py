@@ -157,7 +157,7 @@ if __name__ == '__main__':
         load_if_exists=True, 
         study_name='RecSys_Baseline_val', 
         direction="minimize", 
-        pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
+        pruner=optuna.pruners.MedianPruner()
     )
     try:
         study.optimize(lambda trial: objective(

@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     PADDING_IDX: int = 0              # Индекс для паддинга
     RANDOM_SEED: int = 42
     DEVICE: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    NUM_WORKERS: int = 4
 
     NUMERICAL_FEATURE_COLUMNS: List[str] = [
         'price', 'session_event_num', 'user_global_event_num',
