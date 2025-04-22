@@ -13,6 +13,7 @@ from src.config.configs import settings
 from src.models.dataclass import SessionTransitionDataset
 from src.models.dqn_model import DQNRecommender
 from src.models.dqn_trainer import DQLTrainer
+from src.models.baseline import DQNBaseline
 logger = setup_logger()
 
 
@@ -47,13 +48,13 @@ def objective(trial: optuna.Trial,
     setup_seed(settings.RANDOM_SEED + trial.number)
    
     trainer = DQLTrainer(
-        policy_net=DQNRecommender(
+        policy_net=DQNBaseline(
             num_products=num_products, product_embedding_dim=gru_hidden_size, gru_hidden_size=gru_hidden_size,
             padding_idx=settings.PADDING_IDX, num_brands=num_brands, brand_embedding_dim=brand_embedding_dim,
             num_holidays=num_holidays, holiday_embedding_dim=holiday_embedding_dim,
             num_numerical_features=num_numerical_features, intermediate_layer_size=intermediate_layer_size
         ).to(settings.DEVICE), 
-        target_net=DQNRecommender(
+        target_net=DQNBaseline(
             num_products=num_products, product_embedding_dim=gru_hidden_size, gru_hidden_size=gru_hidden_size,
             padding_idx=settings.PADDING_IDX, num_brands=num_brands, brand_embedding_dim=brand_embedding_dim,
             num_holidays=num_holidays, holiday_embedding_dim=holiday_embedding_dim,
@@ -154,7 +155,7 @@ if __name__ == '__main__':
     study = optuna.create_study(
         storage='sqlite:///optuna_study.db', 
         load_if_exists=True, 
-        study_name='RecSys_DQN_val', 
+        study_name='RecSys_Baseline_val', 
         direction="minimize", 
         pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
     )
