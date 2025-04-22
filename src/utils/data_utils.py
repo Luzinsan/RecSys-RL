@@ -2,6 +2,24 @@ import pandas as pd
 import logging
 import os
 import traceback
+import torch
+import random
+import numpy as np
+
+def setup_seed(seed=42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+
+def pad_collate_fn(batch):
+    keys = batch[0].keys()
+    collated_batch = {}
+    for key in keys:
+        collated_batch[key] = torch.stack([item[key] for item in batch])
+    return collated_batch
+
 
 def setup_logger(name=__name__, 
                  level=logging.INFO):

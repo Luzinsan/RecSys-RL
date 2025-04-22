@@ -149,8 +149,7 @@ WINDOW
     -- Окно для фичей категорий (ДО текущего события)
     category_window AS (PARTITION BY category_code ORDER BY event_time ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)
 ORDER BY
-    user_id, event_time
-LIMIT 10000;
+    user_id, event_time;
 
 
 
@@ -162,7 +161,7 @@ ADD PRIMARY KEY (event_time, product_id, user_session);
 CREATE INDEX IF NOT EXISTS idx_processed_brand ON e_commerce.events_processed (brand); -- Для DENSE_RANK
 CREATE INDEX IF NOT EXISTS idx_processed_user_session ON e_commerce.events_processed (user_session); -- Для DENSE_RANK
 CREATE INDEX IF NOT EXISTS idx_processed_holiday_name ON e_commerce.events_processed (holiday_name); -- Для DENSE_RANK
-CREATE INDEX IF NOT EXISTS idx_processed_event_time ON e_commerce.events_processed (event_time);
+CREATE INDEX IF NOT EXISTS idx_processed_event_time ON e_commerce.events_processed (event_time); -- по приколу
 
 
 DROP TABLE IF EXISTS e_commerce.events_encoded;
@@ -210,8 +209,8 @@ CREATE TABLE e_commerce.events_encoded (
     brand INTEGER NOT NULL, -- Label Encoding
     user_session BIGINT NOT NULL, -- Label Encoding
     holiday_name INTEGER NOT NULL, -- Label Encoding
-
-    PRIMARY KEY (event_time, product_id, user_session)
+    product_id_idx INTEGER NOT NULL -- Embedding слой
+    
 );
 
 
@@ -223,7 +222,7 @@ INSERT INTO e_commerce.events_encoded (
     product_views_before, product_purchases_before, product_avg_price, category_views_before, category_avg_price,
     hour_sin, hour_cos, day_of_week_sin, day_of_week_cos, day_sin, day_cos, month_sin, month_cos, year, is_weekend,
     is_holiday, days_to_next_holiday, days_from_last_holiday,
-    event_type, product_id, category_id, user_id, brand, user_session, holiday_name
+    event_type, product_id, category_id, user_id, brand, user_session, holiday_name, product_id_idx
 )
 WITH SourceData AS (
     -- Читаем все из обновленной таблицы events_processed
@@ -234,13 +233,15 @@ EncodedFeatures AS (
     SELECT
         sd.*, -- Выбираем все колонки из SourceData для использования ниже
         -- Кодируем brand
-        DENSE_RANK() OVER (ORDER BY COALESCE(sd.brand, '__MISSING__')) - 1 AS brand_idx,
+        DENSE_RANK() OVER (ORDER BY COALESCE(sd.brand, '__MISSING__')) AS brand_idx,
         -- Кодируем user_session (даже если это UUID, для целочисленного представления)
-        DENSE_RANK() OVER (ORDER BY sd.user_session) - 1 AS user_session_idx,
+        DENSE_RANK() OVER (ORDER BY sd.user_session) AS user_session_idx,
         -- Кодируем holiday_name (добавленный из Python)
-        DENSE_RANK() OVER (ORDER BY COALESCE(sd.holiday_name, '__MISSING__')) - 1 AS holiday_name_idx
+        DENSE_RANK() OVER (ORDER BY COALESCE(sd.holiday_name, '__MISSING__')) AS holiday_name_idx,
         -- category_code не кодируем, т.к. его нет в целевой таблице events_encoded (и он уже закодирован в category_id)
         -- product_id, category_id, user_id уже являются числовыми идентификаторами
+        -- Кодируем product_id (для Embedding слоя)
+        DENSE_RANK() OVER (ORDER BY sd.product_id) AS product_id_idx
     FROM SourceData sd
 )
 -- Финальный SELECT для вставки в events_encoded
@@ -285,8 +286,12 @@ SELECT
     ef.user_id::BIGINT,               -- user_id BIGINT NOT NULL (оригинальный)
     ef.brand_idx::INTEGER,            -- brand INTEGER NOT NULL (закодированный)
     ef.user_session_idx::BIGINT,      -- user_session BIGINT NOT NULL (закодированный)
-    ef.holiday_name_idx::INTEGER      -- holiday_name INTEGER NOT NULL (закодированный)
+    ef.holiday_name_idx::INTEGER,     -- holiday_name INTEGER NOT NULL (закодированный)
+    ef.product_id_idx::INTEGER        -- product_id_idx INTEGER NOT NULL (для Embedding слоя)
 FROM EncodedFeatures ef;
+
+ALTER TABLE e_commerce.events_encoded
+ADD PRIMARY KEY (event_time, product_id, user_session);
 
 -- Основной индекс для загрузки последовательностей пользователя
 CREATE INDEX IF NOT EXISTS idx_encoded_user_time ON e_commerce.events_encoded (user_id, event_time);
@@ -298,3 +303,5 @@ CREATE INDEX IF NOT EXISTS idx_encoded_session_idx ON e_commerce.events_encoded 
 CREATE INDEX IF NOT EXISTS idx_encoded_product_id ON e_commerce.events_encoded (product_id);
 -- Индекс по ID пользователя
 CREATE INDEX IF NOT EXISTS idx_encoded_user_id ON e_commerce.events_encoded (user_id);
+-- Индекс по ID продукта для Embedding слоя
+CREATE INDEX IF NOT EXISTS idx_encoded_product_id_idx ON e_commerce.events_encoded (product_id_idx);

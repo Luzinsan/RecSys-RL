@@ -15,11 +15,13 @@ sys.path.insert(0, str(find_project_root()))
 from src.utils.data_utils import (
     setup_logger, 
     load_data, 
-    save_data
+    save_data,
+    pad_collate_fn,
+    setup_seed
 )
 
 
-__all__ = ['setup_logger', 'load_data', 'save_data']
+__all__ = ['setup_logger', 'load_data', 'save_data', 'pad_collate_fn', 'setup_seed']
 try:
     from src.utils.pg_connect import PostgresHandler
     __all__.append('PostgresHandler')

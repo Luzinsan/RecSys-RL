@@ -7,23 +7,23 @@ import pandas as pd
 import logging
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from src.config.configs import configs
+from src.config.configs import settings
 
 
 class PostgresHandler:
 
 
-    def __init__(self, configs):
+    def __init__(self, settings):
         self.pg_conn: Optional[pg_connection] = None
         self.sqlalchemy_engine: Optional[Engine] = None
         self.config = dict(
-            dbname=configs.DB_NAME,
-            host=configs.DB_HOST,
-            port=configs.DB_PORT,
-            user=configs.DB_USER,
-            password=configs.DB_PASSWORD
+            dbname=settings.DB_NAME,
+            host=settings.DB_HOST,
+            port=settings.DB_PORT,
+            user=settings.DB_USER,
+            password=settings.DB_PASSWORD
         )
-        self.connection_string = f"postgresql://{configs.DB_USER}:{configs.DB_PASSWORD}@{configs.DB_HOST}:{configs.DB_PORT}/{configs.DB_NAME}"
+        self.connection_string = f"postgresql://{settings.DB_USER}:{settings.DB_PASSWORD}@{settings.DB_HOST}:{settings.DB_PORT}/{settings.DB_NAME}"
 
 
     def __enter__(self):
@@ -89,7 +89,7 @@ class PostgresHandler:
         """
         logging.info(f"Выполнение SQL-запроса: {query[:100]}...")
         try:
-            with PostgresHandler(configs) as handler:
+            with PostgresHandler(settings) as handler:
                 result, execution_time = handler.get(query)
                 logging.info(f"Запрос выполнен успешно за {execution_time:.2f} сек. Размерность полученных данных: {result.shape}")
                 return result
