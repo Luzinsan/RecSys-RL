@@ -1,154 +1,198 @@
-# RecSys-RL
+# RecSys-RL: Reinforcement Learning for E-commerce Recommendations
 
-A Reinforcement Learning-based Recommender System for E-commerce using Deep Q-Networks (DQN).
+## Problem Formulation
+
+This project implements a Reinforcement Learning (RL) based recommender system for e-commerce platforms. The system aims to optimize product recommendations by learning from user interaction patterns and maximizing long-term engagement and conversion.
+
+### Key Challenges
+1. Sequential Decision Making: Recommendations must consider the temporal nature of user sessions
+2. Delayed Rewards: The impact of recommendations may not be immediate
+3. Exploration vs Exploitation: Balancing between showing popular items and discovering new ones
+4. Cold Start: Handling new users and products
+5. Multi-objective Optimization: Balancing various metrics (CTR, conversion, revenue)
+
+## Model Architecture
+
+### Deep Q-Network (DQN)
+
+The core of our system is a Deep Q-Network that learns to make optimal recommendation decisions. The model consists of:
+
+1. **State Representation**:
+   - User features (views, carts, purchases history)
+   - Product features (price, category, popularity)
+   - Session features (current session length, time)
+   - Historical interaction features (last N interactions)
+
+2. **Action Space**:
+   - Set of possible product recommendations
+   - Size: Number of unique products in the catalog
+
+3. **Reward Function**:
+   ```python
+   REWARD_MAP = {
+       'view': 0.1,    # Basic engagement
+       'cart': 1.0,    # Stronger interest
+       'purchase': 5.0 # Conversion
+   }
+   ```
+
+4. **Network Architecture**:
+   - Feature extraction layers
+   - Q-value prediction layers
+   - Target network for stable learning
+
+### Training Process
+
+1. **Data Preprocessing** (`dqn.py`):
+   - Session filtering and normalization
+   - Feature engineering
+   - Action space mapping
+
+2. **Training Loop**:
+   - Experience replay for sample efficiency
+   - Target network updates
+   - Epsilon-greedy exploration
+
+3. **Hyperparameters**:
+   ```python
+   LEARNING_RATE = 0.00001
+   GAMMA = 0.99        # Discount factor
+   BATCH_SIZE = 32
+   EPOCHS = 10
+   MEMORY_SIZE = 10000
+   ```
+
+## Evaluation Framework
+
+### Metrics
+
+1. **Basic Metrics** (`evaluate.py`):
+   - Conversion Rate (CR): Ratio of sessions with purchases
+   - Average Revenue Per User (ARPU): Total revenue / number of users
+   - Click-Through Rate (CTR): Ratio of recommended items that were viewed
+   - Average Session Length: Mean number of events per session
+
+2. **Advanced Metrics**:
+   - AUC Score: Area under ROC curve for purchase prediction
+   - Average Precision: Precision-recall trade-off
+   - Diversity Score: Entropy-based measure of recommendation variety
+   - Accuracy@k: Precision of top-k recommendations
+   - Mean Reciprocal Rank (MRR): Ranking quality measure
+
+3. **Reward Analysis**:
+   - Mean, standard deviation
+   - Min/max values
+   - Distribution statistics
+
+### Visualization
+
+1. **Learning Curves**:
+   - Metric trends over time
+   - Moving averages for smoothing
+   - Baseline comparisons
+
+2. **Performance Analysis**:
+   - Reward distribution plots
+   - Metric correlation analysis
+   - Session-level insights
 
 ## Project Structure
 
 ```
 RecSys-RL/
 ├── datasets/
-│   ├── synthetic_test_data.csv    # Generated synthetic test data
-├── dqn.py                         # DQN model implementation
+│   └── synthetic_test_data.csv    # Generated test data
+├── dqn.py                         # DQN implementation
 ├── evaluate.py                    # Evaluation framework
-├── generate_test_data.py          # Synthetic data generation
-└── README.md                      # Project documentation
+├── generate_test_data.py          # Data generation
+└── requirements.txt               # Dependencies
 ```
 
-## Setup
+### Key Files
 
-1. Install required packages:
-```bash
-pip install -r requirements.txt
-```
+1. **generate_test_data.py**:
+   - Synthetic data generation
+   - User session simulation
+   - Product catalog creation
+   - Event sequence generation
 
-## Workflow
+2. **dqn.py**:
+   - DQN model implementation
+   - Training pipeline
+   - State/action processing
+   - Model saving/loading
 
-### 1. Generate Synthetic Test Data
+3. **evaluate.py**:
+   - Metric calculations
+   - Performance visualization
+   - Baseline comparison
+   - Results analysis
 
-The project includes a script to generate synthetic e-commerce data for testing:
+## Usage
 
-```bash
-python generate_test_data.py
-```
+1. **Setup**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-This will create `datasets/synthetic_test_data.csv` with the following features:
-- User sessions and events (view, cart, purchase)
-- Product information (price, category, brand)
-- User and product statistics
-- Session-level features
+2. **Data Generation**:
+   ```bash
+   python generate_test_data.py
+   ```
 
-### 2. Train DQN Model
+3. **Model Training**:
+   ```bash
+   python dqn.py
+   ```
 
-Train the DQN model on the synthetic data:
-
-```bash
-python dqn.py
-```
-
-The training process:
-1. Loads and preprocesses the synthetic data
-2. Initializes the DQN agent with:
-   - State size: 10 + MAX_HISTORY_LENGTH * 3
-   - Action size: Number of unique products
-   - Hidden size: 128
-3. Trains for 10 epochs with:
-   - Learning rate: 0.00001
-   - Gamma: 0.99
-   - Batch size: 32
-4. Saves the trained model to `dqn_model.pth`
-
-### 3. Evaluate Model Performance
-
-Evaluate the trained model:
-
-```bash
-python evaluate.py
-```
-
-The evaluation includes:
-
-#### Basic Metrics
-- Conversion Rate (CR)
-- Average Revenue Per User (ARPU)
-- Click-Through Rate (CTR)
-- Average Session Length
-
-#### Advanced Metrics
-- Reward Distribution Analysis
-- AUC Score
-- Average Precision
-- Diversity Score
-- Accuracy@k
-- Mean Reciprocal Rank (MRR)
-
-#### Visualization
-- Learning curve plot showing metric trends
-- Comparison with baseline (if available)
-
-## Configuration
-
-Key parameters in `dqn.py`:
-```python
-RANDOM_SEED = 42
-N_RECOMMENDATIONS = 5
-MIN_SESSION_SIZE = 3
-MAX_HISTORY_LENGTH = 10
-LEARNING_RATE = 0.00001
-GAMMA = 0.99
-BATCH_SIZE = 32
-EPOCHS = 10
-MEMORY_SIZE = 10000
-```
-
-Reward mapping:
-```python
-REWARD_MAP = {
-    'view': 0.1,
-    'cart': 1.0,
-    'purchase': 5.0
-}
-```
+4. **Evaluation**:
+   ```bash
+   python evaluate.py
+   ```
 
 ## Customization
 
 ### Data Generation
-Modify `generate_test_data.py` to adjust:
-- Number of users, products, categories
-- Event type probabilities
-- Price ranges
-- Session characteristics
+- Adjust user/product counts
+- Modify event probabilities
+- Change price distributions
+- Customize session patterns
 
 ### Model Training
-Adjust in `dqn.py`:
-- Network architecture
-- Hyperparameters
-- Reward function
-- State representation
+- Modify network architecture
+- Adjust hyperparameters
+- Change reward function
+- Implement new features
 
 ### Evaluation
-Customize in `evaluate.py`:
-- Metric calculations
-- Visualization settings
-- Baseline comparison
+- Add custom metrics
+- Modify visualization
+- Implement new baselines
+- Add A/B testing
 
-## Example Usage
+## Future Improvements
 
-1. Generate test data:
-```python
-python generate_test_data.py
-```
+1. **Model Enhancements**:
+   - Implement Dueling DQN
+   - Add Prioritized Experience Replay
+   - Incorporate attention mechanisms
+   - Add multi-task learning
 
-2. Train the model:
-```python
-python dqn.py
-```
+2. **Feature Engineering**:
+   - Add temporal features
+   - Implement product embeddings
+   - Add user preference modeling
+   - Include contextual information
 
-3. Evaluate results:
-```python
-python evaluate.py
-```
+3. **Evaluation**:
+   - Add offline/online evaluation
+   - Implement counterfactual evaluation
+   - Add fairness metrics
+   - Include business metrics
 
-The evaluation will output metrics and generate plots showing the model's performance over time (there is a problem with plot - I fix it later).
+## Contributing
+
+Feel free to submit issues and enhancement requests!
 
 
 
