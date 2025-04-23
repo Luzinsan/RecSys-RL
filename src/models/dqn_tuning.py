@@ -2,6 +2,7 @@ import torch.nn as nn
 import pandas as pd
 import torch.optim as optim
 from torch.utils.data import DataLoader
+import argparse
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -25,7 +26,8 @@ def objective(trial: optuna.Trial,
               num_brands, 
               num_holidays, 
               num_numerical_features, 
-              epochs_per_trial):
+              epochs_per_trial,
+              model):
     """
     Функция, которую Optuna будет минимизировать.
     Обучает модель DQN с заданными гиперпараметрами и возвращает средний лосс за последнюю эпоху.
@@ -47,25 +49,54 @@ def objective(trial: optuna.Trial,
     trial_start_time = time.time()
     setup_seed(settings.RANDOM_SEED + trial.number)
    
-    trainer = DQLTrainer(
-        policy_net=DQNBaseline(
-            num_products=num_products, product_embedding_dim=gru_hidden_size, gru_hidden_size=gru_hidden_size,
-            padding_idx=settings.PADDING_IDX, num_brands=num_brands, brand_embedding_dim=brand_embedding_dim,
-            num_holidays=num_holidays, holiday_embedding_dim=holiday_embedding_dim,
-            num_numerical_features=num_numerical_features, intermediate_layer_size=intermediate_layer_size
-        ).to(settings.DEVICE), 
-        target_net=DQNBaseline(
-            num_products=num_products, product_embedding_dim=gru_hidden_size, gru_hidden_size=gru_hidden_size,
-            padding_idx=settings.PADDING_IDX, num_brands=num_brands, brand_embedding_dim=brand_embedding_dim,
-            num_holidays=num_holidays, holiday_embedding_dim=holiday_embedding_dim,
-            num_numerical_features=num_numerical_features, intermediate_layer_size=intermediate_layer_size
-        ).to(settings.DEVICE), 
-        criterion=nn.SmoothL1Loss(), 
-        optimizer=optim.AdamW, 
-        lr=lr,
-        gamma=gamma, 
-        target_update_freq=target_update_freq
-    )
+    product_to_category_map = train_dataset.drop_duplicates(
+        subset=['product_id_idx'])\
+            [['product_id_idx', 'category_id_idx']]\
+            .to_dict(orient='records')
+    if model=='baseline':
+        trainer = DQLTrainer(
+            policy_net=DQNBaseline(
+                num_products=num_products, product_embedding_dim=gru_hidden_size, gru_hidden_size=gru_hidden_size,
+                padding_idx=settings.PADDING_IDX, num_brands=num_brands, brand_embedding_dim=brand_embedding_dim,
+                num_holidays=num_holidays, holiday_embedding_dim=holiday_embedding_dim,
+                num_numerical_features=num_numerical_features, intermediate_layer_size=intermediate_layer_size
+            ).to(settings.DEVICE), 
+            target_net=DQNBaseline(
+                num_products=num_products, product_embedding_dim=gru_hidden_size, gru_hidden_size=gru_hidden_size,
+                padding_idx=settings.PADDING_IDX, num_brands=num_brands, brand_embedding_dim=brand_embedding_dim,
+                num_holidays=num_holidays, holiday_embedding_dim=holiday_embedding_dim,
+                num_numerical_features=num_numerical_features, intermediate_layer_size=intermediate_layer_size
+            ).to(settings.DEVICE), 
+            criterion=nn.SmoothL1Loss(), 
+            optimizer=optim.AdamW, 
+            lr=lr,
+            gamma=gamma, 
+            target_update_freq=target_update_freq,
+            product_to_category_map=product_to_category_map,
+            device=settings.DEVICE
+        )
+    elif model=='dqn_recommender':
+        trainer = DQLTrainer(
+            policy_net=DQNRecommender(
+                num_products=num_products, product_embedding_dim=gru_hidden_size, gru_hidden_size=gru_hidden_size,
+                padding_idx=settings.PADDING_IDX, num_brands=num_brands, brand_embedding_dim=brand_embedding_dim,
+                num_holidays=num_holidays, holiday_embedding_dim=holiday_embedding_dim,
+                num_numerical_features=num_numerical_features, intermediate_layer_size=intermediate_layer_size
+            ).to(settings.DEVICE), 
+            target_net=DQNRecommender(
+                num_products=num_products, product_embedding_dim=gru_hidden_size, gru_hidden_size=gru_hidden_size,
+                padding_idx=settings.PADDING_IDX, num_brands=num_brands, brand_embedding_dim=brand_embedding_dim,
+                num_holidays=num_holidays, holiday_embedding_dim=holiday_embedding_dim,
+                num_numerical_features=num_numerical_features, intermediate_layer_size=intermediate_layer_size
+            ).to(settings.DEVICE), 
+            criterion=nn.SmoothL1Loss(), 
+            optimizer=optim.AdamW, 
+            lr=lr,
+            gamma=gamma, 
+            target_update_freq=target_update_freq,
+            product_to_category_map=product_to_category_map,
+            device=settings.DEVICE
+        )
     
     train_dataloader = DataLoader(
         train_dataset,
@@ -99,6 +130,10 @@ def objective(trial: optuna.Trial,
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', '-m', required=True, type=str, default='baseline')
+    args = parser.parse_args()
+
     logger.info(f"Using device: {settings.DEVICE}")
 
     logger.info("Loading data...")
@@ -147,7 +182,7 @@ if __name__ == '__main__':
     logger.info(f"Validation dataset prepared with {len(val_dataset)} transitions.")
     del df_val, df_test
 
-    N_TRIALS = None
+    N_TRIALS = 2
     EPOCHS_PER_TRIAL = 10
 
     logger.info(f"Starting Optuna study with {N_TRIALS} trials, {EPOCHS_PER_TRIAL} epochs per trial.")
@@ -155,9 +190,9 @@ if __name__ == '__main__':
     study = optuna.create_study(
         storage='sqlite:///optuna_study.db', 
         load_if_exists=True, 
-        study_name='RecSys_Baseline_val', 
+        study_name=f'RecSys_{args.model}_val', 
         direction="minimize", 
-        pruner=optuna.pruners.MedianPruner()
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
     )
     try:
         study.optimize(lambda trial: objective(
@@ -168,7 +203,8 @@ if __name__ == '__main__':
             NUM_BRANDS, 
             NUM_HOLIDAYS, 
             len(settings.NUMERICAL_FEATURE_COLUMNS), 
-            EPOCHS_PER_TRIAL
+            EPOCHS_PER_TRIAL,
+            args.model
         ), n_trials=N_TRIALS)
     except KeyboardInterrupt:
         logger.warning("Optuna optimization stopped manually.")

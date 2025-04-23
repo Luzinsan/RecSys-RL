@@ -15,7 +15,9 @@ class DQLTrainer:
                  optimizer, 
                  lr, 
                  gamma, 
-                 target_update_freq):
+                 target_update_freq,
+                 product_to_category_map,
+                 device):
         self.policy_net = policy_net
         self.target_net = target_net
         self.criterion = criterion
@@ -23,15 +25,46 @@ class DQLTrainer:
         self.gamma = gamma
         self.step_count = 0
         self.target_update_freq = target_update_freq
+        self.category_match_reward = settings.CATEGORY_MATCH_REWARD
+        self.device = device
+        # Индекс - product_id_idx, Значение - category_id_idx. -1 для неизвестных.
+        self.category_lookup = torch.full((max(self.product_to_category_map.keys()) + 1,), -1, 
+                                          dtype=torch.long, device=self.device)
+        
+        self.category_lookup[
+            torch.tensor(list(product_to_category_map.items()), 
+                         dtype=torch.long)] = \
+                    torch.tensor(list(self.product_to_category_map.values()), 
+                                 dtype=torch.long, device=self.device)
 
+        self.policy_net.to(self.device)
+        self.target_net.to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
+
+
+    def _get_categories(self, product_indices: torch.Tensor) -> torch.Tensor:
+        """ Получает категории для тензора продуктов с помощью lookup тензора. """
+
+        # Определяем границы lookup тензора
+        lookup_size = len(self.category_lookup)
+
+        # Ограничиваем индексы, чтобы избежать ошибки при индексации
+        clamped_indices = torch.clamp(product_indices, 0, lookup_size - 1)
+
+        # Получаем категории с помощью ограниченных индексов
+        categories = self.category_lookup[clamped_indices]
+
+        # Устанавливаем -1 для тех индексов, которые изначально были вне диапазона
+        categories[(product_indices < 0) | (product_indices >= lookup_size)] = -1
+
+        return categories
 
     def train_epoch(self, dataloader):
         self.policy_net.train()
         epoch_loss = 0.0
     
-        for batch in dataloader:
+        for batch in tqdm(dataloader):
             batch = {k: v.to(settings.DEVICE, non_blocking=True) for k, v in batch.items()}
 
             # Общие входные параметры для обеих сетей
@@ -46,6 +79,9 @@ class DQLTrainer:
             # 1. Получаем Q(s, a) от policy сети
             q_values_all = self.policy_net(*network_inputs)
             q_values_selected = q_values_all.gather(1, batch['action'].unsqueeze(1)).squeeze(1)
+
+            # Получаем предсказанные действия из s_t для сравнения категорий
+            predicted_actions_from_st = q_values_all.argmax(1).detach()
 
             # 2. Получаем TD Target с использованием Double DQN
             with torch.no_grad():
@@ -64,6 +100,19 @@ class DQLTrainer:
                 next_q_values_target = self.target_net(*next_network_inputs)
                 q_values_next_state = next_q_values_target.gather(1, best_next_actions).squeeze(1)
                 q_values_next_state.masked_fill_(batch['done'], False)
+
+            actual_actions = batch['action']
+            # Получаем категории для предсказанных и реальных действий
+            predicted_categories = self._get_categories(predicted_actions_from_st)
+            actual_categories = self._get_categories(actual_actions)
+
+            # Создаем маску: действие предсказано неверно, НО категория верна И известна
+            product_mismatch_mask = (predicted_actions_from_st != actual_actions)
+            category_match_mask = (predicted_categories == actual_categories) & (actual_categories != -1)
+            reward_boost_mask = product_mismatch_mask & category_match_mask
+
+            # Применяем бонус
+            batch['reward'][reward_boost_mask] += self.category_match_reward
 
             # 3. Вычисляем целевые значения TD
             target_q_values = batch['reward'] + self.gamma * q_values_next_state
@@ -89,7 +138,7 @@ class DQLTrainer:
         total_loss = 0.0
     
         with torch.no_grad():
-            for batch in dataloader:
+            for batch in tqdm(dataloader):
                 batch = {k: v.to(settings.DEVICE, non_blocking=True) for k, v in batch.items()}
 
                 # Общие входные параметры для обеих сетей

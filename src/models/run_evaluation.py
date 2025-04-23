@@ -52,8 +52,8 @@ def train_final_model(model_cls,
 
 if __name__ == '__main__':
     # --- Настройки
-    MAIN_MODEL_STUDY_NAME = 'RecSys_DQN_val'
-    BASELINE_STUDY_NAME = 'RecSys_Baseline_val'
+    MAIN_MODEL_STUDY_NAME = 'RecSys_dqn_recommender_val'
+    BASELINE_STUDY_NAME = 'RecSys_baseline_val'
     STUDY_DB_PATH = 'sqlite:///optuna_study.db'
     SAVE_DIR = "src/models/trained_models"
     os.makedirs(SAVE_DIR, exist_ok=True)
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     BASELINE_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_baseline_final.pth")
 
 
-    FINAL_EPOCHS = 20
+    FINAL_EPOCHS = 10
     METRICS_K = 10
     DATA_LIMIT = 10000
     TRAIN_SPLIT = 0.85
@@ -77,17 +77,19 @@ if __name__ == '__main__':
     logger.info(f"Loading study '{MAIN_MODEL_STUDY_NAME}'...")
     study_main = optuna.load_study(study_name=MAIN_MODEL_STUDY_NAME, storage=STUDY_DB_PATH)
     params_main = study_main.best_trial.params
+    params_main['lr'] /= 5
     logger.info(f"Best params for Main Model ({study_main.best_trial.number}): {params_main}")
-
+    
     logger.info(f"Loading study '{BASELINE_STUDY_NAME}'...")
     study_baseline = optuna.load_study(study_name=BASELINE_STUDY_NAME, storage=STUDY_DB_PATH)
     params_baseline = study_baseline.best_trial.params
+    params_baseline['lr'] /= 10
     logger.info(f"Best params for Baseline Model ({study_baseline.best_trial.number}): {params_baseline}")
-
+    
     
     # --- 2. Загрузка и подготовка данных ---
     logger.info("Loading data...")
-    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY event_time LIMIT {DATA_LIMIT}")
+    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY event_time")
     logger.info(f"Data loaded: {len(df)} rows")
     df['event_time'] = pd.to_datetime(df['event_time'])
     # --- 3. Разделение на Train/Test ---

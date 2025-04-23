@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # Награды
     REWARD_MAP: Dict[str, float] = {'view': 0.1, 'cart': 1.0, 'purchase': 5.0}
     DEFAULT_REWARD: float = 0.0
-
+    CATEGORY_MATCH_REWARD: float = 1.0
     # Параметры Обучения
     LEARNING_RATE: float = 1e-6
     GAMMA: float = 0.99

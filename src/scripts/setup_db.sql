@@ -8,17 +8,18 @@ CREATE TABLE e_commerce.events (
     product_id INTEGER NOT NULL,        -- Product identifier
     category_id BIGINT,                 -- Category identifier
     category_code VARCHAR(40),          -- Full category path (can be long)
-    brand VARCHAR(20),                  -- Brand name (allow slightly more space)
+    brand VARCHAR(30),                  -- Brand name (allow slightly more space)
     price REAL NOT NULL,                -- Price (float32 equivalent)
     user_id BIGINT NOT NULL,            -- User identifier
     user_session VARCHAR(36) NOT NULL   -- User session identifier (can be long/complex)
 );
 
-\COPY e_commerce.events FROM 'datasets/prepared4db/events_clean.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
 
--- Добавляем Primary Key ПОСЛЕ вставки данных (быстрее)
-ALTER TABLE e_commerce.events
-ADD PRIMARY KEY (event_time, product_id, user_session);
+-- \COPY e_commerce.events FROM 'datasets/prepared4db/events_0.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
+-- \COPY e_commerce.events FROM 'datasets/prepared4db/events_1.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
+-- \COPY e_commerce.events FROM 'datasets/prepared4db/events_2.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
+-- \COPY e_commerce.events FROM 'datasets/prepared4db/events_3.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
+-- \COPY e_commerce.events FROM 'datasets/prepared4db/events_4.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
 
 -- Одиночные на events 
 CREATE INDEX IF NOT EXISTS idx_events_user_id ON e_commerce.events (user_id);
@@ -42,10 +43,8 @@ CREATE TABLE e_commerce.holidays (
 
 \COPY e_commerce.holidays FROM 'datasets/prepared4db/holidays.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
 
--- Добавляем Primary Key ПОСЛЕ вставки данных (быстрее)
 ALTER TABLE e_commerce.holidays
 ADD PRIMARY KEY (date);
-
--- На holidays 
+ 
 CREATE INDEX IF NOT EXISTS idx_holidays_date ON e_commerce.holidays (date);
 
