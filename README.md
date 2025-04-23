@@ -43,12 +43,12 @@ The core of our system is a Deep Q-Network that learns to make optimal recommend
 
 ### Training Process
 
-1. **Data Preprocessing** (`dqn.py`):
+1. **Data Preprocessing** (`src/scripts/preprocess.py`):
    - Session filtering and normalization
    - Feature engineering
    - Action space mapping
 
-2. **Training Loop**:
+2. **Training Loop** (`src/models/dqn.py`):
    - Experience replay for sample efficiency
    - Target network updates
    - Epsilon-greedy exploration
@@ -66,7 +66,7 @@ The core of our system is a Deep Q-Network that learns to make optimal recommend
 
 ### Metrics
 
-1. **Basic Metrics** (`evaluate.py`):
+1. **Basic Metrics** (`src/models/evaluate.py`):
    - Conversion Rate (CR): Ratio of sessions with purchases
    - Average Revenue Per User (ARPU): Total revenue / number of users
    - Click-Through Rate (CTR): Ratio of recommended items that were viewed
@@ -100,33 +100,41 @@ The core of our system is a Deep Q-Network that learns to make optimal recommend
 
 ```
 RecSys-RL/
+├── src/
+│   ├── models/
+│   │   ├── dqn.py                    # DQN implementation
+│   │   └── evaluate.py               # Evaluation framework
+│   └── scripts/
+│       ├── preprocess.py             # Data preprocessing
+│       └── train.py                  # Training script
 ├── datasets/
-│   └── synthetic_test_data.csv    # Generated test data
-├── dqn.py                         # DQN implementation
-├── evaluate.py                    # Evaluation framework
-├── generate_test_data.py          # Data generation
-└── requirements.txt               # Dependencies
+│   └── synthetic_test_data.csv       # Generated test data
+└── requirements.txt                  # Dependencies
 ```
 
 ### Key Files
 
-1. **generate_test_data.py**:
-   - Synthetic data generation
-   - User session simulation
-   - Product catalog creation
-   - Event sequence generation
-
-2. **dqn.py**:
+1. **src/models/dqn.py**:
    - DQN model implementation
    - Training pipeline
    - State/action processing
    - Model saving/loading
 
-3. **evaluate.py**:
+2. **src/models/evaluate.py**:
    - Metric calculations
    - Performance visualization
    - Baseline comparison
    - Results analysis
+
+3. **src/scripts/preprocess.py**:
+   - Data preprocessing
+   - Feature engineering
+   - Data validation
+
+4. **src/scripts/train.py**:
+   - Training orchestration
+   - Hyperparameter management
+   - Model checkpointing
 
 ## Usage
 
@@ -135,34 +143,34 @@ RecSys-RL/
    pip install -r requirements.txt
    ```
 
-2. **Data Generation**:
+2. **Data Preprocessing**:
    ```bash
-   python generate_test_data.py
+   python src/scripts/preprocess.py
    ```
 
 3. **Model Training**:
    ```bash
-   python dqn.py
+   python src/scripts/train.py
    ```
 
 4. **Evaluation**:
    ```bash
-   python evaluate.py
+   python src/models/evaluate.py
    ```
 
-## Customization
+## Model Customization
 
-### Data Generation
-- Adjust user/product counts
-- Modify event probabilities
-- Change price distributions
-- Customize session patterns
+### DQN Architecture
+- Modify network layers
+- Adjust feature extraction
+- Change state representation
+- Implement new reward functions
 
-### Model Training
-- Modify network architecture
+### Training Process
 - Adjust hyperparameters
-- Change reward function
-- Implement new features
+- Modify exploration strategy
+- Change batch processing
+- Implement new training techniques
 
 ### Evaluation
 - Add custom metrics
