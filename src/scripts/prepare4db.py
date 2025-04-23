@@ -9,9 +9,9 @@ from src.utils import save_data, setup_logger
 
 
 if __name__ == '__main__':
-    DATASET_PATH = Path('datasets/ecommerce-events-history-in-electronics-store')
-    OUTPUT_PATH = Path('datasets/prepared4db/events_clean.csv')
-    HOLIDAYS_PATH = Path('datasets/prepared4db/holidays.csv')
+    DATASET_PATH = Path('datasets/archive/ecommerce-events-history-in-electronics-store')
+    OUTPUT_PATH = Path('datasets/archive/prepared4db/events_clean.csv')
+    HOLIDAYS_PATH = Path('datasets/archive/prepared4db/holidays.csv')
     os.makedirs(OUTPUT_PATH.parent, exist_ok=True)
     os.makedirs(HOLIDAYS_PATH.parent, exist_ok=True)
 
