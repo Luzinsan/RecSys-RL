@@ -2,7 +2,11 @@
 
 ## Problem Formulation
 
-This project implements a Reinforcement Learning (RL) based recommender system for e-commerce platforms. The system aims to optimize product recommendations by learning from user interaction patterns and maximizing long-term engagement and conversion.
+This project implements two Reinforcement Learning (RL) based recommender systems for e-commerce platforms:
+1. Deep Q-Network (DQN)
+2. Actor-Critic
+
+Both systems aim to optimize product recommendations by learning from user interaction patterns and maximizing long-term engagement and conversion.
 
 ### Key Challenges
 1. Sequential Decision Making: Recommendations must consider the temporal nature of user sessions
@@ -11,11 +15,11 @@ This project implements a Reinforcement Learning (RL) based recommender system f
 4. Cold Start: Handling new users and products
 5. Multi-objective Optimization: Balancing various metrics (CTR, conversion, revenue)
 
-## Model Architecture
+## Model Architectures
 
-### Deep Q-Network (DQN)
+### 1. Deep Q-Network (DQN)
 
-The core of our system is a Deep Q-Network that learns to make optimal recommendation decisions. The model consists of:
+The DQN model learns to make optimal recommendation decisions through Q-learning. The model consists of:
 
 1. **State Representation**:
    - User features (views, carts, purchases history)
@@ -41,60 +45,24 @@ The core of our system is a Deep Q-Network that learns to make optimal recommend
    - Q-value prediction layers
    - Target network for stable learning
 
-### Training Process
+### 2. Actor-Critic
 
-1. **Data Preprocessing** (`src/scripts/preprocess.py`):
-   - Session filtering and normalization
-   - Feature engineering
-   - Action space mapping
+The Actor-Critic model combines policy-based and value-based approaches:
 
-2. **Training Loop** (`src/models/dqn.py`):
-   - Experience replay for sample efficiency
-   - Target network updates
-   - Epsilon-greedy exploration
+1. **Actor Network**:
+   - Policy network for action selection
+   - Outputs action probabilities
+   - Optimized for direct policy improvement
 
-3. **Hyperparameters**:
-   ```python
-   LEARNING_RATE = 0.00001
-   GAMMA = 0.99        # Discount factor
-   BATCH_SIZE = 32
-   EPOCHS = 10
-   MEMORY_SIZE = 10000
-   ```
+2. **Critic Network**:
+   - Value network for state evaluation
+   - Estimates state-value function
+   - Provides baseline for policy updates
 
-## Evaluation Framework
-
-### Metrics
-
-1. **Basic Metrics** (`src/models/evaluate.py`):
-   - Conversion Rate (CR): Ratio of sessions with purchases
-   - Average Revenue Per User (ARPU): Total revenue / number of users
-   - Click-Through Rate (CTR): Ratio of recommended items that were viewed
-   - Average Session Length: Mean number of events per session
-
-2. **Advanced Metrics**:
-   - AUC Score: Area under ROC curve for purchase prediction
-   - Average Precision: Precision-recall trade-off
-   - Diversity Score: Entropy-based measure of recommendation variety
-   - Accuracy@k: Precision of top-k recommendations
-   - Mean Reciprocal Rank (MRR): Ranking quality measure
-
-3. **Reward Analysis**:
-   - Mean, standard deviation
-   - Min/max values
-   - Distribution statistics
-
-### Visualization
-
-1. **Learning Curves**:
-   - Metric trends over time
-   - Moving averages for smoothing
-   - Baseline comparisons
-
-2. **Performance Analysis**:
-   - Reward distribution plots
-   - Metric correlation analysis
-   - Session-level insights
+3. **Advantages**:
+   - Better sample efficiency
+   - Reduced variance in updates
+   - More stable training
 
 ## Project Structure
 
@@ -102,39 +70,50 @@ The core of our system is a Deep Q-Network that learns to make optimal recommend
 RecSys-RL/
 ├── src/
 │   ├── models/
-│   │   ├── dqn.py                    # DQN implementation
-│   │   └── evaluate.py               # Evaluation framework
-│   └── scripts/
-│       ├── preprocess.py             # Data preprocessing
-│       └── train.py                  # Training script
+│   │   ├── dqn/
+│   │   │   ├── dqn_model.py         # DQN model implementation
+│   │   │   ├── dqn_trainer.py       # DQN training logic
+│   │   │   └── dqn_tuning.py        # Hyperparameter tuning
+│   │   ├── actor_critic/
+│   │   │   ├── actor_critic_model.py # Actor-Critic implementation
+│   │   │   ├── actor_critic_trainer.py # Training logic
+│   │   │   └── actor_critic_tuning.py  # Hyperparameter tuning
+│   │   └── evaluate.py              # Evaluation framework
+│   ├── scripts/
+│   │   ├── preprocess.py            # Data preprocessing
+│   │   └── train.py                 # Training orchestration
+│   └── utils/
+│       ├── data_utils.py            # Data handling utilities
+│       └── metrics.py               # Metric calculations
 ├── datasets/
-│   └── synthetic_test_data.csv       # Generated test data
-└── requirements.txt                  # Dependencies
+│   └── synthetic_test_data.csv      # Generated test data
+└── requirements.txt                 # Dependencies
 ```
 
-### Key Files
+### Key Components
 
-1. **src/models/dqn.py**:
-   - DQN model implementation
-   - Training pipeline
-   - State/action processing
-   - Model saving/loading
+1. **DQN Implementation** (`src/models/dqn/`):
+   - `dqn_model.py`: Core DQN architecture
+   - `dqn_trainer.py`: Training pipeline
+   - `dqn_tuning.py`: Hyperparameter optimization
 
-2. **src/models/evaluate.py**:
+2. **Actor-Critic Implementation** (`src/models/actor_critic/`):
+   - `actor_critic_model.py`: Model architecture
+   - `actor_critic_trainer.py`: Training logic
+   - `actor_critic_tuning.py`: Parameter tuning
+
+3. **Evaluation** (`src/models/evaluate.py`):
    - Metric calculations
    - Performance visualization
-   - Baseline comparison
-   - Results analysis
+   - Model comparison
 
-3. **src/scripts/preprocess.py**:
-   - Data preprocessing
-   - Feature engineering
-   - Data validation
+4. **Scripts** (`src/scripts/`):
+   - `preprocess.py`: Data preprocessing
+   - `train.py`: Training orchestration
 
-4. **src/scripts/train.py**:
-   - Training orchestration
-   - Hyperparameter management
-   - Model checkpointing
+5. **Utilities** (`src/utils/`):
+   - `data_utils.py`: Data handling
+   - `metrics.py`: Metric calculations
 
 ## Usage
 
@@ -150,7 +129,11 @@ RecSys-RL/
 
 3. **Model Training**:
    ```bash
-   python src/scripts/train.py
+   # Train DQN
+   python src/scripts/train.py --model dqn
+   
+   # Train Actor-Critic
+   python src/scripts/train.py --model actor_critic
    ```
 
 4. **Evaluation**:
@@ -165,6 +148,12 @@ RecSys-RL/
 - Adjust feature extraction
 - Change state representation
 - Implement new reward functions
+
+### Actor-Critic Architecture
+- Modify actor network
+- Adjust critic network
+- Change policy gradient method
+- Implement new baseline
 
 ### Training Process
 - Adjust hyperparameters
