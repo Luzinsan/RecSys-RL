@@ -349,49 +349,6 @@ def calculate_ndcg_at_k(all_top_k_indices: torch.Tensor, all_actual_actions: tor
     return ndcg
 
 
-def calculate_category_accuracy_at_k(
-    all_top_k_indices: torch.Tensor,
-    all_actual_actions: torch.Tensor,
-    product_to_category_map: Dict[int, int],
-    k: int) -> float:
-    """
-    Calculates the category accuracy at k - proportion of recommendations where the category
-    of at least one recommended item matches the category of the actual item.
-    
-    Args:
-        all_top_k_indices: Tensor of shape (batch_size, k) containing top-k recommendations
-        all_actual_actions: Tensor of shape (batch_size,) containing actual actions
-        product_to_category_map: Dictionary mapping product IDs to category IDs
-        k: Number of recommendations to consider
-    
-    Returns:
-        float: Category accuracy at k score
-    """
-    logger.info(f"Calculating Category Accuracy@{k}...")
-    if all_top_k_indices.numel() == 0:
-        return 0.0
-    
-    num_samples = len(all_actual_actions)
-    correct = 0
-    
-    for i in range(num_samples):
-        actual_action = all_actual_actions[i].item()
-        if actual_action not in product_to_category_map:
-            continue
-            
-        actual_category = product_to_category_map[actual_action]
-        recommended_items = all_top_k_indices[i, :k].tolist()
-        recommended_categories = [
-            product_to_category_map.get(item, -1) 
-            for item in recommended_items
-        ]
-        
-        if actual_category in recommended_categories:
-            correct += 1
-    
-    accuracy = correct / num_samples if num_samples > 0 else 0.0
-    logger.info(f"Category Accuracy@{k} calculated: {accuracy:.6f}")
-    return accuracy
 
 
 def calculate_all_metrics(policy_net,
@@ -400,52 +357,80 @@ def calculate_all_metrics(policy_net,
                           test_df: pd.DataFrame,
                           k: int,
                           settings) -> Tuple[Dict[str, float], Dict[str, Optional[torch.Tensor]]]:
-    """Calculate all evaluation metrics for the model."""
-    logger.info("Starting calculation of all metrics...")
-    
-    # Get recommendations and Q-values
-    all_top_k_indices, all_q_values, all_actual_actions = get_recommendations_and_q_values(
-        policy_net, test_dataloader, k, settings.device
+    """
+    Объединенная функция для расчета всех метрик и сбора промежуточных данных.
+
+    Args:
+        policy_net: Обученная модель (policy network).
+        trainer: Экземпляр DQLTrainer.
+        test_dataloader: DataLoader с тестовыми данными (переходы).
+        test_df: DataFrame с тестовыми данными (события/сессии).
+        k: Параметр K для метрик.
+        settings: Объект настроек проекта.
+
+    Returns:
+        Кортеж из двух словарей:
+        - final_metrics: Словарь с рассчитанными итоговыми метриками.
+        - intermediate_data: Словарь с промежуточными тензорами для построения графиков
+                             ('top_k', 'actual', 'q_values', 'rewards').
+    """
+    logger.info(f"Starting calculation of all metrics and intermediate data (K={k})...")
+    metrics = {}
+    intermediate_data = {}
+    device = settings.DEVICE
+
+    # 1. Получаем рекомендации, действия и Q-значения один раз из DataLoader
+    all_top_k_indices, all_actual_actions, all_q_values = get_recommendations_and_q_values(
+        policy_net, test_dataloader, k, device
     )
+    intermediate_data['top_k'] = all_top_k_indices
+    intermediate_data['actual'] = all_actual_actions
+    intermediate_data['q_values'] = all_q_values
+
+    # 2. Метрики на основе переходов (DataLoader)
+    metrics['loss'] = calculate_loss(trainer, test_dataloader)
+    metrics[f'accuracy@{k}'] = calculate_accuracy_at_k(all_top_k_indices, all_actual_actions, k)
+    metrics[f'mrr@{k}'] = calculate_mrr_at_k(all_top_k_indices, all_actual_actions, k)
+    metrics[f'ndcg@{k}'] = calculate_ndcg_at_k(all_top_k_indices, all_actual_actions, k)
+    metrics['auc'] = calculate_auc(all_q_values, all_actual_actions)
+    metrics['average_precision'] = calculate_average_precision(all_q_values, all_actual_actions)
+    metrics[f'diversity@{k}'] = calculate_recommendation_diversity(all_top_k_indices, k)
+    metrics[f'ctr@{k}'] = calculate_ctr_at_k(all_top_k_indices, all_actual_actions, k)
+
     
-    # Create product to category mapping from test_df
-    product_to_category_map = dict(zip(test_df['product_id'], test_df['category_id']))
-    
-    # Calculate metrics
-    metrics = {
-        'conversion_rate': calculate_conversion_rate(test_df),
-        'arpu': calculate_arpu(test_df),
-        'ctr@k': calculate_ctr_at_k(all_top_k_indices, all_actual_actions, k),
-        'avg_session_length': calculate_avg_session_length(test_df),
-        'accuracy@k': calculate_accuracy_at_k(all_top_k_indices, all_actual_actions, k),
-        'mrr@k': calculate_mrr_at_k(all_top_k_indices, all_actual_actions, k),
-        'ndcg@k': calculate_ndcg_at_k(all_top_k_indices, all_actual_actions, k),
-        'diversity@k': calculate_recommendation_diversity(all_top_k_indices, k),
-        'category_accuracy@k': calculate_category_accuracy_at_k(
-            all_top_k_indices, all_actual_actions, product_to_category_map, k
-        ),
-        'auc': calculate_auc(all_q_values, all_actual_actions),
-        'average_precision': calculate_average_precision(all_q_values, all_actual_actions)
-    }
-    
-    # Calculate reward distribution statistics
-    reward_stats = analyze_reward_distribution(test_dataloader)
+    reward_stats, all_rewards_tensor = analyze_reward_distribution(test_dataloader, return_raw=True)
     metrics.update(reward_stats)
-    
-    # Calculate loss if trainer is provided
-    if trainer is not None:
-        loss = calculate_loss(trainer, test_dataloader)
-        metrics['loss'] = loss
-    
-    # Store intermediate data for visualization
-    intermediate_data = {
-        'top_k_indices': all_top_k_indices,
-        'q_values': all_q_values,
-        'actual_actions': all_actual_actions
+    intermediate_data['rewards'] = all_rewards_tensor
+
+    # 3. Метрики на основе сессий (DataFrame)
+    metrics['conversion_rate'] = calculate_conversion_rate(test_df)
+    metrics['arpu'] = calculate_arpu(test_df)
+    metrics['avg_session_length'] = calculate_avg_session_length(test_df)
+
+
+    logger.info("Finished calculation of all metrics and intermediate data.")
+    metrics_rounded = {key: round(val, 6) if isinstance(val, (float, np.floating)) and not np.isnan(val) else val for key, val in metrics.items()}
+
+    final_metrics = {
+        'loss': metrics_rounded.get('loss'),
+        f'accuracy_at_{k}': metrics_rounded.get(f'accuracy@{k}'),
+        f'mean_reciprocal_rank': metrics_rounded.get(f'mrr@{k}'),
+        f'ndcg_at_{k}': metrics_rounded.get(f'ndcg@{k}'),
+        'auc_score': metrics_rounded.get('auc'),
+        'average_precision': metrics_rounded.get('average_precision'),
+        'diversity_score': metrics_rounded.get(f'diversity@{k}'),
+        'ctr': metrics_rounded.get(f'ctr@{k}'),
+        'conversion_rate': metrics_rounded.get('conversion_rate'),
+        'arpu': metrics_rounded.get('arpu'),
+        'avg_session_length': metrics_rounded.get('avg_session_length'),
+        'reward_mean': metrics_rounded.get('reward_mean'),
+        'reward_std': metrics_rounded.get('reward_std'),
+        'reward_min': metrics_rounded.get('reward_min'),
+        'reward_max': metrics_rounded.get('reward_max'),
+        'reward_median': metrics_rounded.get('reward_median'),
     }
-    
-    logger.info("All metrics calculated successfully.")
-    return metrics, intermediate_data
+    final_metrics = {k: v for k, v in final_metrics.items() if v is not None and not (isinstance(v, float) and np.isnan(v))}
+    return final_metrics, intermediate_data
 
 
 
