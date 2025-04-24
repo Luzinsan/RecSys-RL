@@ -15,12 +15,6 @@ CREATE TABLE e_commerce.events (
 );
 
 
--- \COPY e_commerce.events FROM 'datasets/prepared4db/events_0.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
--- \COPY e_commerce.events FROM 'datasets/prepared4db/events_1.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
--- \COPY e_commerce.events FROM 'datasets/prepared4db/events_2.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
--- \COPY e_commerce.events FROM 'datasets/prepared4db/events_3.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
--- \COPY e_commerce.events FROM 'datasets/prepared4db/events_4.csv' WITH (FORMAT CSV, HEADER TRUE, DELIMITER ',');
-
 -- Одиночные на events 
 CREATE INDEX IF NOT EXISTS idx_events_user_id ON e_commerce.events (user_id);
 CREATE INDEX IF NOT EXISTS idx_events_product_id ON e_commerce.events (product_id);

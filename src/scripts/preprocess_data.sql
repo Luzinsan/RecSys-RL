@@ -202,7 +202,7 @@ CREATE TABLE e_commerce.events_encoded (
     -- Оригинальные колонки
     -- единственный незакодированный признак, 
     -- чтобы во время обучения можно было подобрать маппинг для reward
-    event_type VARCHAR(10) NOT NULL, -- reward
+    event_type VARCHAR(20) NOT NULL, -- reward
     product_id INTEGER NOT NULL,
     category_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,

@@ -27,14 +27,15 @@ class DQLTrainer:
         self.target_update_freq = target_update_freq
         self.category_match_reward = settings.CATEGORY_MATCH_REWARD
         self.device = device
-        # Индекс - product_id_idx, Значение - category_id_idx. -1 для неизвестных.
-        self.category_lookup = torch.full((max(self.product_to_category_map.keys()) + 1,), -1, 
+        # Индекс - product_id_idx, Значение - category_id -1 для неизвестных.
+        print(max(product_to_category_map.keys()))
+        self.category_lookup = torch.full((max(product_to_category_map.keys()) + 1,), -1, 
                                           dtype=torch.long, device=self.device)
         
         self.category_lookup[
-            torch.tensor(list(product_to_category_map.items()), 
-                         dtype=torch.long)] = \
-                    torch.tensor(list(self.product_to_category_map.values()), 
+            torch.tensor(list(product_to_category_map.keys()), 
+                         dtype=torch.long, device=self.device)] = \
+                    torch.tensor(list(product_to_category_map.values()), 
                                  dtype=torch.long, device=self.device)
 
         self.policy_net.to(self.device)
@@ -65,7 +66,7 @@ class DQLTrainer:
         epoch_loss = 0.0
     
         for batch in tqdm(dataloader):
-            batch = {k: v.to(settings.DEVICE, non_blocking=True) for k, v in batch.items()}
+            batch = {k: v.to(self.device, non_blocking=True) for k, v in batch.items()}
 
             # Общие входные параметры для обеих сетей
             network_inputs = (
@@ -139,7 +140,7 @@ class DQLTrainer:
     
         with torch.no_grad():
             for batch in tqdm(dataloader):
-                batch = {k: v.to(settings.DEVICE, non_blocking=True) for k, v in batch.items()}
+                batch = {k: v.to(self.device, non_blocking=True) for k, v in batch.items()}
 
                 # Общие входные параметры для обеих сетей
                 network_inputs = (

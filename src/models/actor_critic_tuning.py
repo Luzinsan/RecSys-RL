@@ -2,6 +2,7 @@ import optuna
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
+import tqdm
 from src.models.dataclass import SessionTransitionDataset
 from src.models.actor_critic_model import ActorCritic
 from src.models.actor_critic_trainer import ActorCriticTrainer
@@ -32,7 +33,7 @@ def objective(trial: optuna.Trial,
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False)
     # тренировка
-    for e in range(epochs):
+    for e in tqdm.tqdm(range(epochs), desc="Epochs"):
         trainer.train_epoch(train_loader)
         stats = trainer.evaluate(val_loader)
         trial.report(stats['policy_loss']+stats['value_loss'], e)

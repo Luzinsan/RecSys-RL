@@ -15,6 +15,7 @@ from src.models.dataclass import SessionTransitionDataset
 from src.models.dqn_model import DQNRecommender
 from src.models.dqn_trainer import DQLTrainer
 from src.models.baseline import DQNBaseline
+from src.models.actor_critic_tuning import objective as actor_critic_objective
 logger = setup_logger()
 
 
@@ -22,6 +23,7 @@ logger = setup_logger()
 def objective(trial: optuna.Trial, 
               train_dataset: SessionTransitionDataset,
               val_dataset: SessionTransitionDataset,
+              product_to_category_map: dict,
               num_products, 
               num_brands, 
               num_holidays, 
@@ -49,10 +51,7 @@ def objective(trial: optuna.Trial,
     trial_start_time = time.time()
     setup_seed(settings.RANDOM_SEED + trial.number)
    
-    product_to_category_map = train_dataset.drop_duplicates(
-        subset=['product_id_idx'])\
-            [['product_id_idx', 'category_id_idx']]\
-            .to_dict(orient='records')
+    
     if model=='baseline':
         trainer = DQLTrainer(
             policy_net=DQNBaseline(
@@ -97,7 +96,9 @@ def objective(trial: optuna.Trial,
             product_to_category_map=product_to_category_map,
             device=settings.DEVICE
         )
-    
+
+
+
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -131,14 +132,15 @@ def objective(trial: optuna.Trial,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', '-m', required=True, type=str, default='baseline')
+    parser.add_argument('--model', '-m', type=str, default='baseline')
     args = parser.parse_args()
 
     logger.info(f"Using device: {settings.DEVICE}")
 
     logger.info("Loading data...")
-    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY event_time LIMIT 400000")
+    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY user_id, event_time LIMIT 100000")
     logger.info(f"Data loaded: {len(df)} rows")
+    df.to_csv('datasets/events_encoded.csv', index=False)
 
     df['event_time'] = pd.to_datetime(df['event_time'])
     n_rows = len(df)
@@ -162,7 +164,12 @@ if __name__ == '__main__':
 
     NUM_HOLIDAYS = df_train['holiday_name'].max() + 1
     logger.info(f"Num holidays (for Embedding): {NUM_HOLIDAYS}")
-
+    print(df_train.columns)
+    product_to_category_map = df_train.drop_duplicates(
+        subset=['product_id_idx'])\
+            [['product_id_idx', 'category_id']]\
+                .set_index('product_id_idx')\
+                .to_dict()['category_id']
     # --- Создание Dataset'ов ---
     logger.info("Preparing train dataset...")
     train_dataset = SessionTransitionDataset(
@@ -182,7 +189,7 @@ if __name__ == '__main__':
     logger.info(f"Validation dataset prepared with {len(val_dataset)} transitions.")
     del df_val, df_test
 
-    N_TRIALS = 2
+    N_TRIALS = 200
     EPOCHS_PER_TRIAL = 10
 
     logger.info(f"Starting Optuna study with {N_TRIALS} trials, {EPOCHS_PER_TRIAL} epochs per trial.")
@@ -190,7 +197,7 @@ if __name__ == '__main__':
     study = optuna.create_study(
         storage='sqlite:///optuna_study.db', 
         load_if_exists=True, 
-        study_name=f'RecSys_{args.model}_val', 
+        study_name=f'RecSys_{args.model}_val_with_category_reward', 
         direction="minimize", 
         pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
     )
@@ -199,6 +206,7 @@ if __name__ == '__main__':
             trial, 
             train_dataset,
             val_dataset, 
+            product_to_category_map,
             NUM_PRODUCTS, 
             NUM_BRANDS, 
             NUM_HOLIDAYS, 

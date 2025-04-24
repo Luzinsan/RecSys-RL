@@ -53,17 +53,17 @@ def train_final_model(model_cls,
 if __name__ == '__main__':
     # --- Настройки
     MAIN_MODEL_STUDY_NAME = 'RecSys_dqn_recommender_val'
-    BASELINE_STUDY_NAME = 'RecSys_baseline_val'
+    BASELINE_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_reward'
     STUDY_DB_PATH = 'sqlite:///optuna_study.db'
     SAVE_DIR = "src/models/trained_models"
     os.makedirs(SAVE_DIR, exist_ok=True)
 
     REPORT_SAVE_PATH = os.path.join(SAVE_DIR, "evaluation_report.html")
     MAIN_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_recommender_final.pth")
-    BASELINE_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_baseline_final.pth")
+    BASELINE_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_recommender_with_cat_final.pth")
 
 
-    FINAL_EPOCHS = 10
+    FINAL_EPOCHS = 3
     METRICS_K = 10
     DATA_LIMIT = 10000
     TRAIN_SPLIT = 0.85
@@ -77,13 +77,13 @@ if __name__ == '__main__':
     logger.info(f"Loading study '{MAIN_MODEL_STUDY_NAME}'...")
     study_main = optuna.load_study(study_name=MAIN_MODEL_STUDY_NAME, storage=STUDY_DB_PATH)
     params_main = study_main.best_trial.params
-    params_main['lr'] /= 5
+    params_main['lr'] /= 100
     logger.info(f"Best params for Main Model ({study_main.best_trial.number}): {params_main}")
     
     logger.info(f"Loading study '{BASELINE_STUDY_NAME}'...")
     study_baseline = optuna.load_study(study_name=BASELINE_STUDY_NAME, storage=STUDY_DB_PATH)
     params_baseline = study_baseline.best_trial.params
-    params_baseline['lr'] /= 10
+    # params_baseline['lr'] /= 5
     logger.info(f"Best params for Baseline Model ({study_baseline.best_trial.number}): {params_baseline}")
     
     
@@ -108,6 +108,13 @@ if __name__ == '__main__':
     logger.info(f"Num products: {NUM_PRODUCTS}, Brands: {NUM_BRANDS}, Holidays: {NUM_HOLIDAYS}")
 
     # --- 5. Создание Datasets  ---
+    print(df_train.columns)
+    product_to_category_map = df_train.drop_duplicates(
+        subset=['product_id_idx'])\
+            [['product_id_idx', 'category_id']]\
+                .set_index('product_id_idx')\
+                .to_dict()['category_id']
+    
     dataset_creation_params = {
         'numerical_feature_cols': settings.NUMERICAL_FEATURE_COLUMNS,
         'categorical_feature_cols': settings.CATEGORICAL_FEATURE_COLUMNS,
@@ -132,11 +139,13 @@ if __name__ == '__main__':
         'padding_idx': settings.PADDING_IDX,
         'num_brands': NUM_BRANDS,
         'num_holidays': NUM_HOLIDAYS,
-        'num_numerical_features': NUM_NUMERICAL_FEATURES,
+        'num_numerical_features': NUM_NUMERICAL_FEATURES
     }
     common_trainer_params = {
         'criterion': nn.SmoothL1Loss(),
         'optimizer': optim.AdamW,
+        'product_to_category_map': product_to_category_map,
+        'device': settings.DEVICE
     }
     # Baseline
     model_params_baseline = {
@@ -179,6 +188,7 @@ if __name__ == '__main__':
     test_batch_size = train_batch_size * 2
     train_dataloader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, **dataloader_creation_params)
     test_dataloader = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False, **dataloader_creation_params)
+   
 
     # --- 8. Обучение Baseline Модели  ---
     logger.info("="*20 + " Training Baseline Model " + "="*20)
@@ -187,7 +197,7 @@ if __name__ == '__main__':
         model_save_path=BASELINE_MODEL_SAVE_PATH
     )
 
-    # --- 9. Обучение Основной Модели  ---
+     # --- 9. Обучение Основной Модели  ---
     logger.info("="*20 + " Training Main Model " + "="*20)
     policy_net_main, trainer_main = train_final_model(
         DQNRecommender, model_params_main, trainer_params_main, train_dataloader, FINAL_EPOCHS,
