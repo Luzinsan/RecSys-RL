@@ -52,7 +52,7 @@ def train_final_model(model_cls,
 
 if __name__ == '__main__':
     # --- Настройки
-    MAIN_MODEL_STUDY_NAME = 'RecSys_dqn_recommender_val'
+    MAIN_MODEL_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_fixed_reward'
     BASELINE_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_reward'
     STUDY_DB_PATH = 'sqlite:///optuna_study.db'
     SAVE_DIR = "src/models/trained_models"
@@ -63,7 +63,7 @@ if __name__ == '__main__':
     BASELINE_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_recommender_with_cat_final.pth")
 
 
-    FINAL_EPOCHS = 3
+    FINAL_EPOCHS = 30
     METRICS_K = 10
     DATA_LIMIT = 10000
     TRAIN_SPLIT = 0.85
@@ -83,7 +83,7 @@ if __name__ == '__main__':
     logger.info(f"Loading study '{BASELINE_STUDY_NAME}'...")
     study_baseline = optuna.load_study(study_name=BASELINE_STUDY_NAME, storage=STUDY_DB_PATH)
     params_baseline = study_baseline.best_trial.params
-    # params_baseline['lr'] /= 5
+    params_baseline['lr'] /= 100
     logger.info(f"Best params for Baseline Model ({study_baseline.best_trial.number}): {params_baseline}")
     
     
@@ -189,20 +189,21 @@ if __name__ == '__main__':
     train_dataloader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, **dataloader_creation_params)
     test_dataloader = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False, **dataloader_creation_params)
    
-
-    # --- 8. Обучение Baseline Модели  ---
-    logger.info("="*20 + " Training Baseline Model " + "="*20)
-    policy_net_baseline, trainer_baseline = train_final_model(
-        DQNBaseline, model_params_baseline, trainer_params_baseline, train_dataloader, FINAL_EPOCHS,
-        model_save_path=BASELINE_MODEL_SAVE_PATH
-    )
-
-     # --- 9. Обучение Основной Модели  ---
+    # --- 9. Обучение Основной Модели  ---
     logger.info("="*20 + " Training Main Model " + "="*20)
     policy_net_main, trainer_main = train_final_model(
         DQNRecommender, model_params_main, trainer_params_main, train_dataloader, FINAL_EPOCHS,
         model_save_path=MAIN_MODEL_SAVE_PATH
     )
+
+    # --- 8. Обучение Baseline Модели  ---
+    logger.info("="*20 + " Training Baseline Model " + "="*20)
+    policy_net_baseline, trainer_baseline = train_final_model(
+        DQNBaseline, model_params_baseline, trainer_params_baseline, train_dataloader, 10,
+        model_save_path=BASELINE_MODEL_SAVE_PATH
+    )
+
+    
 
 
     # --- 10. Оценка и Генерация Отчета ---

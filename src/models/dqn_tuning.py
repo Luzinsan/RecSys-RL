@@ -197,7 +197,7 @@ if __name__ == '__main__':
     study = optuna.create_study(
         storage='sqlite:///optuna_study.db', 
         load_if_exists=True, 
-        study_name=f'RecSys_{args.model}_val_with_category_reward', 
+        study_name=f'RecSys_{args.model}_val_with_category_fixed_reward', 
         direction="minimize", 
         pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
     )
