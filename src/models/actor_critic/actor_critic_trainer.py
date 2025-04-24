@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from torch.distributions import Categorical
 from tqdm import tqdm
+from torch.nn import functional as F
 
 class ActorCriticTrainer:
     """
@@ -55,8 +56,10 @@ class ActorCriticTrainer:
             
             # Compute advantages and losses
             advantages = td_target - values
+            adv_mean, adv_std = advantages.mean(), advantages.std()
+            advantages = (advantages - adv_mean) / (adv_std + 1e-8)
             policy_loss = -(logp * advantages.detach()).mean()
-            value_loss = advantages.pow(2).mean()
+            value_loss = F.mse_loss(values, td_target.detach())
             
             # Total loss with entropy regularization
             loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy
@@ -106,8 +109,10 @@ class ActorCriticTrainer:
                 
                 # Compute advantages and losses
                 advantages = td_target - values
+                adv_mean, adv_std = advantages.mean(), advantages.std()
+                advantages = (advantages - adv_mean) / (adv_std + 1e-8)
                 policy_loss = -(logp * advantages).mean()
-                value_loss = advantages.pow(2).mean()
+                value_loss = F.mse_loss(values, td_target.detach())
                 
                 # Update statistics
                 policy_loss_sum += policy_loss.item()

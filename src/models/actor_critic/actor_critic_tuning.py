@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 import sys
 import time
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 import optuna
 from src.models.dataclass import SessionTransitionDataset
 from src.models.actor_critic.actor_critic_model import ActorCritic
@@ -28,7 +28,7 @@ def objective(trial: optuna.Trial,
     Trains Actor-Critic model with given hyperparameters and returns validation loss.
     """
     # Hyperparameters
-    lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
+    lr = trial.suggest_float("lr", 1e-6, 1e-3, log=True)
     batch_size = trial.suggest_int("batch_size", 64, 512, step=64)
     gamma = trial.suggest_float("gamma", 0.95, 0.999)
     value_coef = trial.suggest_float("value_coef", 0.3, 0.7)
@@ -152,7 +152,7 @@ if __name__ == '__main__':
     logger.info(f"Using device: {settings.DEVICE}")
 
     logger.info("Loading data...")
-    df = pd.read_csv('datasets/events_encoded.csv')
+    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY user_id, event_time")
     logger.info(f"Data loaded: {len(df)} rows")
 
     df['event_time'] = pd.to_datetime(df['event_time'])
@@ -197,15 +197,15 @@ if __name__ == '__main__':
     logger.info(f"Validation dataset prepared with {len(val_dataset)} transitions.")
     del df_val, df_test
 
-    N_TRIALS = None  # Set to None for unlimited trials or a specific number
-    EPOCHS_PER_TRIAL = 10
+    N_TRIALS = 100  # Set to None for unlimited trials or a specific number
+    EPOCHS_PER_TRIAL = 20
 
     logger.info(f"Starting Optuna study with {N_TRIALS} trials, {EPOCHS_PER_TRIAL} epochs per trial.")
 
     study = optuna.create_study(
         storage='sqlite:///optuna_study.db', 
         load_if_exists=True, 
-        study_name='RecSys_AC_val', 
+        study_name='RecSys_Actor_critic_val', 
         direction="minimize", 
         pruner=optuna.pruners.MedianPruner()
     )

@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     EMBEDDING_DIM: int = 64           # Размерность эмбеддингов продуктов
 
     # Награды
-    REWARD_MAP: Dict[str, float] = {'view': 0.1, 'cart': 3.0, 'purchase': 5.0}
+    REWARD_MAP: Dict[str, float] = {'view': 0.1, 'cart': 0.3, 'purchase': 0.5}
     DEFAULT_REWARD: float = -0.1
     CATEGORY_MATCH_REWARD: float = 0.2
     # Параметры Обучения

@@ -6,20 +6,20 @@ from typing import Optional
 
 import optuna
 
-from utils.data_utils import setup_logger, setup_seed
-from utils.pg_connect import PostgresHandler
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import torch
 from torch.utils.data import DataLoader
 import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
+
 
 from src.models.dataclass import SessionTransitionDataset
 from src.models.actor_critic.actor_critic_model import ActorCritic
 from src.models.actor_critic.actor_critic_trainer import ActorCriticTrainer
 from src.models.evaluate import calculate_all_metrics_and_report
+from src.utils.data_utils import setup_logger, setup_seed
+from src.utils.pg_connect import PostgresHandler
 from src.config.configs import settings
 
 
@@ -56,7 +56,7 @@ def train_final_model(model_cls,
 
 if __name__ == '__main__':
     # --- Настройки
-    MAIN_MODEL_STUDY_NAME = 'RecSys_actor_critic_val_with_category_fixed_reward'
+    MAIN_MODEL_STUDY_NAME = 'RecSys_Actor_critic_val'
     BASELINE_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_fixed_reward'
     STUDY_DB_PATH = 'sqlite:///optuna_study.db'
     SAVE_DIR = "src/models/trained_models"
@@ -81,7 +81,7 @@ if __name__ == '__main__':
     logger.info(f"Loading study '{MAIN_MODEL_STUDY_NAME}'...")
     study_main = optuna.load_study(study_name=MAIN_MODEL_STUDY_NAME, storage=STUDY_DB_PATH)
     params_main = study_main.best_trial.params
-    params_main['lr'] /= 100
+    # params_main['lr'] /= 100
     logger.info(f"Best params for Main Model ({study_main.best_trial.number}): {params_main}")
     
     logger.info(f"Loading study '{BASELINE_STUDY_NAME}'...")
@@ -93,7 +93,7 @@ if __name__ == '__main__':
     
     # --- 2. Загрузка и подготовка данных ---
     logger.info("Loading data...")
-    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY event_time")
+    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY event_time LIMIT 100")
     logger.info(f"Data loaded: {len(df)} rows")
     df['event_time'] = pd.to_datetime(df['event_time'])
     # --- 3. Разделение на Train/Test ---
@@ -112,11 +112,10 @@ if __name__ == '__main__':
     logger.info(f"Num products: {NUM_PRODUCTS}, Brands: {NUM_BRANDS}, Holidays: {NUM_HOLIDAYS}")
 
     # --- 5. Создание Datasets  ---
-    num_cols = [f'num_feat_{j}' for j in range(NUM_NUMERICAL_FEATURES)]
     ds = SessionTransitionDataset(
-        df,
-        numerical_feature_cols=num_cols,
-        categorical_feature_cols=[],
+        df_train,
+        numerical_feature_cols=settings.NUMERICAL_FEATURE_COLUMNS,
+        categorical_feature_cols=settings.CATEGORICAL_FEATURE_COLUMNS,
         max_history_length=settings.MAX_HISTORY_LENGTH,
         padding_idx=settings.PADDING_IDX,
         reward_map=settings.REWARD_MAP,
@@ -127,23 +126,23 @@ if __name__ == '__main__':
     # --- 4. Модель и тренер ---
     model = ActorCritic(
         num_products=NUM_PRODUCTS,
-        product_embedding_dim=16,
-        gru_hidden_size=32,
+        product_embedding_dim=params_main['product_embedding_dim'],
+        gru_hidden_size=params_main['gru_hidden_size'],
         padding_idx=settings.PADDING_IDX,
         num_brands=NUM_BRANDS,
-        brand_embedding_dim=8,
+        brand_embedding_dim=params_main['brand_embedding_dim'],
         num_holidays=NUM_HOLIDAYS,
-        holiday_embedding_dim=8,
+        holiday_embedding_dim=params_main['holiday_embedding_dim'],
         num_numerical_features=NUM_NUMERICAL_FEATURES,
-        intermediate_layer_size=64
+        intermediate_layer_size=params_main['intermediate_layer_size']
     )
     trainer = ActorCriticTrainer(
         model=model,
         optimizer_cls=torch.optim.Adam,
-        lr=1e-3,
-        gamma=0.99,
-        value_coef=0.5,
-        entropy_coef=0.01,
+        lr=params_main['lr'],
+        gamma=settings.GAMMA,
+        value_coef=params_main['value_coef'],
+        entropy_coef=params_main['entropy_coef'],
         device=settings.DEVICE
     )
 
@@ -183,7 +182,7 @@ if __name__ == '__main__':
         policy_net=policy_model,
         trainer=eval_trainer,
         test_dataloader=loader,
-        test_df=df,
+        test_df=df_test,
         k=METRICS_K,
         settings=settings,
         policy_net_baseline=policy_model,
