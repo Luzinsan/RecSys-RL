@@ -9,14 +9,14 @@ import torch.optim as optim
 import logging
 import os
 from typing import Optional
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.utils import PostgresHandler, setup_logger, setup_seed, pad_collate_fn
 from src.config.configs import settings
 from src.models.dataclass import SessionTransitionDataset
-from src.models.dqn_trainer import DQLTrainer
-from src.models.dqn_model import DQNRecommender
-from src.models.baseline import DQNBaseline
+from src.models.dqn.dqn_trainer import DQLTrainer
+from src.models.dqn.dqn_model import DQNRecommender
+from src.models.dqn.baseline import DQNBaseline
 from src.models.evaluate import calculate_all_metrics_and_report
 
 
@@ -55,7 +55,7 @@ if __name__ == '__main__':
     MAIN_MODEL_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_fixed_reward'
     BASELINE_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_reward'
     STUDY_DB_PATH = 'sqlite:///optuna_study.db'
-    SAVE_DIR = "src/models/trained_models"
+    SAVE_DIR = "src/models/dqn/trained_models"
     os.makedirs(SAVE_DIR, exist_ok=True)
 
     REPORT_SAVE_PATH = os.path.join(SAVE_DIR, "evaluation_report.html")
@@ -63,8 +63,8 @@ if __name__ == '__main__':
     BASELINE_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_recommender_with_cat_final.pth")
 
 
-    FINAL_EPOCHS = 30
-    METRICS_K = 10
+    FINAL_EPOCHS = 50
+    METRICS_K = 20
     DATA_LIMIT = 10000
     TRAIN_SPLIT = 0.85
     
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     
     # --- 2. Загрузка и подготовка данных ---
     logger.info("Loading data...")
-    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY event_time")
+    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY user_id, event_time")
     logger.info(f"Data loaded: {len(df)} rows")
     df['event_time'] = pd.to_datetime(df['event_time'])
     # --- 3. Разделение на Train/Test ---

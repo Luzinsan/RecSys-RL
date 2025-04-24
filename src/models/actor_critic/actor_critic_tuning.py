@@ -8,8 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import optuna
 from src.models.dataclass import SessionTransitionDataset
-from src.models.actor_critic_model import ActorCritic
-from src.models.actor_critic_trainer import ActorCriticTrainer
+from src.models.actor_critic.actor_critic_model import ActorCritic
+from src.models.actor_critic.actor_critic_trainer import ActorCriticTrainer
 from src.config.configs import settings
 from src.utils import PostgresHandler, setup_logger, pad_collate_fn, setup_seed
 

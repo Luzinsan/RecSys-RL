@@ -5,17 +5,16 @@ from torch.utils.data import DataLoader
 import argparse
 import sys
 from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from src.utils import PostgresHandler, setup_logger, pad_collate_fn, setup_seed
 import optuna
 import time
 from src.config.configs import settings
 from src.models.dataclass import SessionTransitionDataset
-from src.models.dqn_model import DQNRecommender
-from src.models.dqn_trainer import DQLTrainer
-from src.models.baseline import DQNBaseline
-from src.models.actor_critic_tuning import objective as actor_critic_objective
+from src.models.dqn.dqn_model import DQNRecommender
+from src.models.dqn.dqn_trainer import DQLTrainer
+from src.models.dqn.baseline import DQNBaseline
 logger = setup_logger()
 
 
@@ -140,7 +139,6 @@ if __name__ == '__main__':
     logger.info("Loading data...")
     df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY user_id, event_time LIMIT 100000")
     logger.info(f"Data loaded: {len(df)} rows")
-    df.to_csv('datasets/events_encoded.csv', index=False)
 
     df['event_time'] = pd.to_datetime(df['event_time'])
     n_rows = len(df)
