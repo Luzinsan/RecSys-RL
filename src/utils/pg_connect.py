@@ -28,7 +28,7 @@ class PostgresHandler:
 
     def __enter__(self):
         """
-        Создает соединение с базой данных при входе в контекстный менеджер
+        Creates a connection to the database when entering the context manager
         """
         self.pg_conn = psycopg2.connect(**self.config)
         self.sqlalchemy_engine = create_engine(self.connection_string)
@@ -37,7 +37,7 @@ class PostgresHandler:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """
-        Закрывает соединение с базой данных при выходе из контекстного менеджера
+        Closes the database connection when exiting the context manager
         """
         if self.pg_conn:
             self.pg_conn.close()
@@ -76,23 +76,23 @@ class PostgresHandler:
     @staticmethod
     def send(query: str) -> pd.DataFrame:
         """
-        Подключается к базе данных и выполняет SQL-запрос на чтение данных и возвращает результат в виде DataFrame.
+        Connects to the database and executes an SQL query to read data and returns the result as a DataFrame.
         
         Args:
-            query (str): SQL-запрос для выполнения
+            query (str): SQL query to execute
             
         Returns:
-            pd.DataFrame: Результат запроса в виде DataFrame
+            pd.DataFrame: Query result as a DataFrame
             
         Raises:
-            Exception: Если произошла ошибка при выполнении запроса
+            Exception: If an error occurs during query execution
         """
-        logging.info(f"Выполнение SQL-запроса: {query[:100]}...")
+        logging.info(f"Executing SQL query: {query[:100]}...")
         try:
             with PostgresHandler(settings) as handler:
                 result, execution_time = handler.get(query)
-                logging.info(f"Запрос выполнен успешно за {execution_time:.2f} сек. Размерность полученных данных: {result.shape}")
+                logging.info(f"Query executed successfully in {execution_time:.2f} sec. Data size: {result.shape}")
                 return result
         except Exception as e:
-            logging.error(f"Ошибка при выполнении запроса: {str(e)}")
+            logging.error(f"Error executing query: {str(e)}")
             raise

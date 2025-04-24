@@ -123,6 +123,10 @@ def objective(trial: optuna.Trial,
         
         # Report to Optuna
         trial.report(val_loss, epoch)
+        # Reject trial early if val_loss indicates divergence (< -50)
+        if val_loss < -20:
+            logger.info(f"[Trial {trial.number}] Pruned because val_loss={val_loss:.4f} < -50 threshold")
+            raise optuna.TrialPruned()
         
         # Early stopping
         if val_loss < best_val_loss:
@@ -152,7 +156,7 @@ if __name__ == '__main__':
     logger.info(f"Using device: {settings.DEVICE}")
 
     logger.info("Loading data...")
-    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY user_id, event_time")
+    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY user_id, event_time LIMIT 100000")
     logger.info(f"Data loaded: {len(df)} rows")
 
     df['event_time'] = pd.to_datetime(df['event_time'])
@@ -178,7 +182,6 @@ if __name__ == '__main__':
     NUM_HOLIDAYS = df_train['holiday_name'].max() + 1
     logger.info(f"Num holidays (for Embedding): {NUM_HOLIDAYS}")
 
-    # --- Create Datasets ---
     logger.info("Preparing train dataset...")
     train_dataset = SessionTransitionDataset(
         df_train, settings.NUMERICAL_FEATURE_COLUMNS, settings.CATEGORICAL_FEATURE_COLUMNS,
@@ -197,8 +200,8 @@ if __name__ == '__main__':
     logger.info(f"Validation dataset prepared with {len(val_dataset)} transitions.")
     del df_val, df_test
 
-    N_TRIALS = 100  # Set to None for unlimited trials or a specific number
-    EPOCHS_PER_TRIAL = 20
+    N_TRIALS = 100
+    EPOCHS_PER_TRIAL = 10
 
     logger.info(f"Starting Optuna study with {N_TRIALS} trials, {EPOCHS_PER_TRIAL} epochs per trial.")
 

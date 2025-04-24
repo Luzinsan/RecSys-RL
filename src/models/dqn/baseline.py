@@ -16,7 +16,7 @@ class DQNBaseline(nn.Module):
                                               product_embedding_dim, 
                                               padding_idx=padding_idx)
 
-        # GRU для истории продуктов
+        
         self.gru = nn.GRU(product_embedding_dim, 
                           gru_hidden_size, 
                           batch_first=True)
@@ -41,7 +41,7 @@ class DQNBaseline(nn.Module):
             product_embedded, lengths_cpu, batch_first=True, enforce_sorted=False
         )
         packed_output, hidden = self.gru(packed_embedded)
-        last_hidden_state = hidden.squeeze(0) # [batch_size, gru_hidden_size]
+        last_hidden_state = hidden.squeeze(0)
 
         combined_state = torch.cat([
             last_hidden_state,

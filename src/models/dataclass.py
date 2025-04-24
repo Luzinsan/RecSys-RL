@@ -28,55 +28,52 @@ class SessionTransitionDataset(Dataset):
         self.transitions = self._prepare_transitions(df)
 
     def _create_user_transitions(self, user_df):
-        """
-        Обрабатывает DataFrame одного пользователя и создает список переходов.
-        """
         user_transitions = []
         user_history = deque(maxlen=self.max_history_length)
 
         product_indices = user_df['product_id_idx'].to_numpy()
         event_types = user_df['event_type'].to_numpy()
         session_ids = user_df['user_session'].to_numpy()
-        # <<< Извлекаем числовые фичи >>>
+        
         numerical_features = user_df[self.numerical_feature_cols].to_numpy(dtype=np.float32)
-        # <<< Извлекаем категориальные индексы >>>
+        
         brand_indices = user_df['brand'].to_numpy(dtype=np.int64)
         holiday_indices = user_df['holiday_name'].to_numpy(dtype=np.int64)
 
         last_session_id = None
-        # <<< Храним последнюю известную числовую и категориальную инфу >>>
+        
         last_valid_numerical_features = np.zeros(self.num_numerical_features, dtype=np.float32)
-        last_valid_brand_idx = 0 # Используем 0 как дефолтный/неизвестный индекс
+        last_valid_brand_idx = 0 
         last_valid_holiday_idx = 0
 
         for i in range(len(user_df)):
             current_product_idx = product_indices[i]
             current_event_type = event_types[i]
             current_session_id = session_ids[i]
-            # <<< Текущие числовые фичи и категориальные индексы >>>
+            
             current_numerical_features = numerical_features[i]
             current_brand_idx = brand_indices[i]
             current_holiday_idx = holiday_indices[i]
 
             is_done = (last_session_id is not None and current_session_id != last_session_id) or (i == len(user_df) - 1)
 
-            # Состояние ДО (`state_t`)
+            
             current_history_list = list(user_history)
             state_len = len(current_history_list)
             state_history_padded = np.full(self.max_history_length, self.padding_idx, dtype=np.int64)
             if state_len > 0:
                 state_history_padded[-state_len:] = current_history_list
 
-            # <<< Фичи и индексы для state_t (с предыдущего шага) >>>
+            
             state_numerical_features_np = last_valid_numerical_features.copy()
             state_brand_idx_np = last_valid_brand_idx
             state_holiday_idx_np = last_valid_holiday_idx
 
-            # Действие и награда (текущий шаг i)
+            
             action = current_product_idx
             reward = self.reward_map.get(current_event_type, self.default_reward)
 
-            # Состояние ПОСЛЕ (`state_{t+1}`)
+            
             temp_next_history_list = current_history_list + [action]
             next_state_len = min(len(temp_next_history_list), self.max_history_length)
             next_state_history_padded = np.full(self.max_history_length, self.padding_idx, dtype=np.int64)
@@ -84,7 +81,7 @@ class SessionTransitionDataset(Dataset):
             if next_state_len > 0:
                  next_state_history_padded[-next_state_len:] = actual_next_history
 
-            # <<< Фичи и индексы для next_state_{t+1} (текущий шаг i) >>>
+            
             next_state_numerical_features_np = current_numerical_features.copy()
             next_state_brand_idx_np = current_brand_idx
             next_state_holiday_idx_np = current_holiday_idx
@@ -93,20 +90,20 @@ class SessionTransitionDataset(Dataset):
                  user_transitions.append({
                     'state_history': torch.from_numpy(state_history_padded),
                     'state_length': torch.tensor(state_len, dtype=torch.long),
-                    'state_numerical_features': torch.from_numpy(state_numerical_features_np), # <<< Числовые фичи состояния
-                    'state_brand_idx': torch.tensor(state_brand_idx_np, dtype=torch.long), # <<< Индекс бренда состояния
-                    'state_holiday_idx': torch.tensor(state_holiday_idx_np, dtype=torch.long), # <<< Индекс праздника состояния
+                    'state_numerical_features': torch.from_numpy(state_numerical_features_np), 
+                    'state_brand_idx': torch.tensor(state_brand_idx_np, dtype=torch.long), 
+                    'state_holiday_idx': torch.tensor(state_holiday_idx_np, dtype=torch.long), 
                     'action': torch.tensor(action, dtype=torch.long),
                     'reward': torch.tensor(reward, dtype=torch.float32),
                     'next_state_history': torch.from_numpy(next_state_history_padded),
                     'next_state_length': torch.tensor(next_state_len, dtype=torch.long),
-                    'next_state_numerical_features': torch.from_numpy(next_state_numerical_features_np), # <<< Числовые фичи след. состояния
-                    'next_state_brand_idx': torch.tensor(next_state_brand_idx_np, dtype=torch.long), # <<< Индекс бренда след. состояния
-                    'next_state_holiday_idx': torch.tensor(next_state_holiday_idx_np, dtype=torch.long), # <<< Индекс праздника след. состояния
+                    'next_state_numerical_features': torch.from_numpy(next_state_numerical_features_np), 
+                    'next_state_brand_idx': torch.tensor(next_state_brand_idx_np, dtype=torch.long), 
+                    'next_state_holiday_idx': torch.tensor(next_state_holiday_idx_np, dtype=torch.long), 
                     'done': torch.tensor(is_done, dtype=torch.bool)
                  })
 
-            # Обновляем историю и "последние известные" значения для след. итерации
+            
             user_history.append(current_product_idx)
             last_valid_numerical_features = current_numerical_features
             last_valid_brand_idx = current_brand_idx

@@ -26,5 +26,5 @@ try:
     from src.utils.pg_connect import PostgresHandler
     __all__.append('PostgresHandler')
 except ImportError:
-    # psycopg2 не установлен, но это не должно мешать использовать другие утилиты
+    
     pass

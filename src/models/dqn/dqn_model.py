@@ -11,15 +11,15 @@ class DQNRecommender(nn.Module):
         super().__init__()
         self.padding_idx = padding_idx
 
-        # Embedding слои
+        
         self.product_embedding = nn.Embedding(num_products, product_embedding_dim, padding_idx=padding_idx)
         self.brand_embedding = nn.Embedding(num_brands, brand_embedding_dim)
         self.holiday_embedding = nn.Embedding(num_holidays, holiday_embedding_dim)
 
-        # GRU для истории продуктов
+        
         self.gru = nn.GRU(product_embedding_dim, gru_hidden_size, batch_first=True)
 
-        # Рассчитываем общий размер вектора состояния после конкатенации
+        
         combined_feature_size = (
             gru_hidden_size +
             num_numerical_features +
@@ -31,9 +31,9 @@ class DQNRecommender(nn.Module):
 
 
     def forward(self, state_history, lengths, state_numerical_features, state_brand_idx, state_holiday_idx):
-        # 1. Обработка истории продуктов через GRU
+        
         lengths = lengths.to(state_history.device)
-        lengths_cpu = torch.clamp(lengths, min=1).cpu() # Для pack_padded_sequence
+        lengths_cpu = torch.clamp(lengths, min=1).cpu() 
 
         product_embedded = self.product_embedding(state_history)
         packed_embedded = pack_padded_sequence(
@@ -42,21 +42,21 @@ class DQNRecommender(nn.Module):
         packed_output, hidden = self.gru(packed_embedded)
         last_hidden_state = hidden.squeeze(0) # [batch_size, gru_hidden_size]
 
-        # 2. Получение эмбеддингов для категориальных фичей
+        
         brand_embedded = self.brand_embedding(state_brand_idx) # [batch_size, brand_embedding_dim]
         holiday_embedded = self.holiday_embedding(state_holiday_idx) # [batch_size, holiday_embedding_dim]
 
-        # 3. Конкатенация всех компонент состояния
+        
         combined_state = torch.cat([
             last_hidden_state,
             state_numerical_features,
             brand_embedded,
             holiday_embedded
-        ], dim=1) # Конкатенируем по оси признаков
+        ], dim=1) 
 
-        # 4. Пропускаем через новый слой + ReLU
+        
         hidden_after_concat = F.relu(self.intermediate_layer(combined_state))
 
-        # 5. Пропускаем через финальный слой для получения Q-значений
+        
         q_values = self.out_layer(hidden_after_concat) # [batch_size, num_products]
         return q_values

@@ -29,11 +29,7 @@ def objective(trial: optuna.Trial,
               num_numerical_features, 
               epochs_per_trial,
               model):
-    """
-    Функция, которую Optuna будет минимизировать.
-    Обучает модель DQN с заданными гиперпараметрами и возвращает средний лосс за последнюю эпоху.
-    """
-    # --- Предложение гиперпараметров ---
+    
     lr = trial.suggest_float("lr", 1e-7, 1e-3, log=True)
     batch_size = trial.suggest_int("batch_size", 64, 1024, step=64)
     gamma = trial.suggest_float("gamma", 0.9, 0.999)
@@ -168,7 +164,7 @@ if __name__ == '__main__':
             [['product_id_idx', 'category_id']]\
                 .set_index('product_id_idx')\
                 .to_dict()['category_id']
-    # --- Создание Dataset'ов ---
+    
     logger.info("Preparing train dataset...")
     train_dataset = SessionTransitionDataset(
         df_train, settings.NUMERICAL_FEATURE_COLUMNS, settings.CATEGORICAL_FEATURE_COLUMNS,

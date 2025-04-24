@@ -96,10 +96,8 @@ def analyze_reward_distribution(dataloader, return_raw=False) -> Union[Dict[str,
         except Exception as e:
              logger.error(f"Error processing batch for reward analysis: {e}", exc_info=True)
              continue
-
-    # Default stats
     stats = {'reward_mean': 0.0, 'reward_std': 0.0, 'reward_min': 0.0, 'reward_max': 0.0, 'reward_median': 0.0}
-    all_rewards_tensor = torch.tensor([]) # Empty tensor if no rewards
+    all_rewards_tensor = torch.tensor([]) 
 
     if all_rewards:
         all_rewards_tensor_np = torch.cat(all_rewards).numpy()
@@ -122,7 +120,6 @@ def analyze_reward_distribution(dataloader, return_raw=False) -> Union[Dict[str,
 
 
 def calculate_auc(all_q_values: torch.Tensor, all_actual_actions: torch.Tensor) -> float:
-    """ AUC - Q-значения как скоры, реальное действие = позитивный класс. """
     logger.info("Calculating AUC Score...")
     num_samples, num_actions = all_q_values.shape
     if num_samples == 0: return 0.0
@@ -145,7 +142,6 @@ def calculate_auc(all_q_values: torch.Tensor, all_actual_actions: torch.Tensor) 
     if processed_samples == 0 or len(set(y_true_flat)) < 2:
         logger.warning("Not enough valid data or only one class for AUC calculation.")
         return 0.5
-
     try:
         auc = roc_auc_score(y_true_flat, y_score_flat)
         logger.info(f"AUC Score calculated: {auc:.6f}")
@@ -182,7 +178,6 @@ def calculate_average_precision(all_q_values: torch.Tensor, all_actual_actions: 
     if processed_samples == 0 or positive_samples == 0:
         logger.warning("Not enough valid data or no positive samples for Average Precision calculation.")
         return 0.0
-
     try:
         ap = average_precision_score(y_true_flat, y_score_flat)
         logger.info(f"Average Precision Score calculated: {ap:.6f}")
@@ -216,19 +211,48 @@ def calculate_recommendation_diversity(all_top_k_indices: torch.Tensor, k: int) 
 
 
 def calculate_accuracy_at_k(all_top_k_indices: torch.Tensor, all_actual_actions: torch.Tensor, k: int) -> float:
-    """ Accuracy@K (HitRate@K) - доля переходов, где реальное действие попало в топ-K. """
-    logger.info(f"Calculating Accuracy@{k} (HitRate@{k})...")
+    """ Accuracy@K - доля случаев, когда реальное действие в топ-K предсказаний. """
+    logger.info(f"Calculating Accuracy@{k}...")
     num_samples = all_actual_actions.numel()
     if num_samples == 0: return 0.0
 
     actual_next_expanded = all_actual_actions.unsqueeze(1)
-    hits_tensor = (all_top_k_indices == actual_next_expanded).any(dim=1)
-    total_hits = hits_tensor.sum().item()
+    hits = (all_top_k_indices == actual_next_expanded).any(dim=1).sum().item()
+    accuracy = hits / num_samples
+    logger.info(f"Accuracy@{k} calculated: {accuracy:.6f}")
+    return accuracy
 
-    hit_rate = total_hits / num_samples
-    logger.info(f"Accuracy@{k} calculated: {hit_rate:.6f}")
-    return hit_rate
+def calculate_category_accuracy_at_k(
+        all_top_k_indices: torch.Tensor,
+        all_actual_actions: torch.Tensor,
+        product_to_category_map: Dict[int, int],
+        k: int
+    ) -> float:
+    """
+    Category Accuracy@K - доля случаев, когда категория реального действия присутствует
+    среди категорий top-K рекомендаций.
+    """
+    logger.info(f"Calculating Category Accuracy@{k}...")
+    num_samples = all_actual_actions.numel()
+    if num_samples == 0:
+        return 0.0
 
+    hits = 0
+    
+    for recs, actual in zip(all_top_k_indices.tolist(), all_actual_actions.tolist()):
+        
+        actual_cat = product_to_category_map.get(actual)
+        if actual_cat is None:
+            continue
+        
+        rec_cats = [product_to_category_map.get(prod) for prod in recs]
+        
+        if actual_cat in rec_cats:
+            hits += 1
+
+    category_accuracy = hits / num_samples
+    logger.info(f"Category Accuracy@{k} calculated: {category_accuracy:.6f}")
+    return category_accuracy
 
 def calculate_mrr_at_k(all_top_k_indices: torch.Tensor, all_actual_actions: torch.Tensor, k: int) -> float:
     """ Mean Reciprocal Rank @ K - средний обратный ранг реального действия в топ-K. """
@@ -356,7 +380,8 @@ def calculate_all_metrics(policy_net,
                           test_dataloader,
                           test_df: pd.DataFrame,
                           k: int,
-                          settings) -> Tuple[Dict[str, float], Dict[str, Optional[torch.Tensor]]]:
+                          settings,
+                          product_to_category_map: Optional[Dict[int, int]] = None) -> Tuple[Dict[str, float], Dict[str, Optional[torch.Tensor]]]:
     """
     Объединенная функция для расчета всех метрик и сбора промежуточных данных.
 
@@ -367,6 +392,7 @@ def calculate_all_metrics(policy_net,
         test_df: DataFrame с тестовыми данными (события/сессии).
         k: Параметр K для метрик.
         settings: Объект настроек проекта.
+        product_to_category_map: Mapping from product IDs to category IDs (optional).
 
     Returns:
         Кортеж из двух словарей:
@@ -379,7 +405,7 @@ def calculate_all_metrics(policy_net,
     intermediate_data = {}
     device = settings.DEVICE
 
-    # 1. Получаем рекомендации, действия и Q-значения один раз из DataLoader
+    
     all_top_k_indices, all_actual_actions, all_q_values = get_recommendations_and_q_values(
         policy_net, test_dataloader, k, device
     )
@@ -387,7 +413,7 @@ def calculate_all_metrics(policy_net,
     intermediate_data['actual'] = all_actual_actions
     intermediate_data['q_values'] = all_q_values
 
-    # 2. Метрики на основе переходов (DataLoader)
+    
     metrics['loss'] = calculate_loss(trainer, test_dataloader)
     metrics[f'accuracy@{k}'] = calculate_accuracy_at_k(all_top_k_indices, all_actual_actions, k)
     metrics[f'mrr@{k}'] = calculate_mrr_at_k(all_top_k_indices, all_actual_actions, k)
@@ -396,13 +422,17 @@ def calculate_all_metrics(policy_net,
     metrics['average_precision'] = calculate_average_precision(all_q_values, all_actual_actions)
     metrics[f'diversity@{k}'] = calculate_recommendation_diversity(all_top_k_indices, k)
     metrics[f'ctr@{k}'] = calculate_ctr_at_k(all_top_k_indices, all_actual_actions, k)
+    # 2.1 Category-level accuracy
+    if product_to_category_map is not None:
+        metrics[f'category_accuracy@{k}'] = calculate_category_accuracy_at_k(
+            all_top_k_indices, all_actual_actions, product_to_category_map, k)
 
     
     reward_stats, all_rewards_tensor = analyze_reward_distribution(test_dataloader, return_raw=True)
     metrics.update(reward_stats)
     intermediate_data['rewards'] = all_rewards_tensor
 
-    # 3. Метрики на основе сессий (DataFrame)
+    
     metrics['conversion_rate'] = calculate_conversion_rate(test_df)
     metrics['arpu'] = calculate_arpu(test_df)
     metrics['avg_session_length'] = calculate_avg_session_length(test_df)
@@ -420,6 +450,7 @@ def calculate_all_metrics(policy_net,
         'average_precision': metrics_rounded.get('average_precision'),
         'diversity_score': metrics_rounded.get(f'diversity@{k}'),
         'ctr': metrics_rounded.get(f'ctr@{k}'),
+        'category_accuracy': metrics_rounded.get(f'category_accuracy@{k}'),
         'conversion_rate': metrics_rounded.get('conversion_rate'),
         'arpu': metrics_rounded.get('arpu'),
         'avg_session_length': metrics_rounded.get('avg_session_length'),
@@ -546,7 +577,8 @@ def generate_html_report(
         metrics_baseline: Optional[Dict] = None,
         intermediate_data_baseline: Optional[Dict] = None,
         k: int = 10,
-        save_path: str = "evaluation_report.html"
+        save_path: str = "evaluation_report.html",
+        product_to_category_map: Optional[Dict[int, int]] = None
     ):
     """
     Generates an HTML report with metrics and Plotly graphs.
@@ -558,6 +590,7 @@ def generate_html_report(
         intermediate_data_baseline: Dictionary of intermediate data for baseline (optional).
         k: K value used for metrics.
         save_path: Path to save the HTML file.
+        product_to_category_map: Mapping from product IDs to category IDs (optional).
     """
     logger.info(f"Generating HTML report at {save_path}...")
 
@@ -584,6 +617,15 @@ def generate_html_report(
         ).to_html(full_html=False, 
                   include_plotlyjs=True)
 
+    # Category distribution for main model
+    if product_to_category_map is not None:
+        plots_html['cats_main'] = plot_category_distribution_plotly(
+            intermediate_data_main.get('top_k'),
+            product_to_category_map,
+            k,
+            title="Main Model: Top Recommended Categories"
+        ).to_html(full_html=False, include_plotlyjs=True)
+
     if metrics_baseline and intermediate_data_baseline:
         plots_html['reward_base'] = plot_reward_distribution_plotly(
             intermediate_data_baseline.get('rewards'), 
@@ -604,6 +646,15 @@ def generate_html_report(
             title="Baseline Model: Q-Value Distribution"
             ).to_html(full_html=False, 
                       include_plotlyjs=True)
+
+        # Category distribution for baseline model
+        if product_to_category_map is not None:
+            plots_html['cats_base'] = plot_category_distribution_plotly(
+                intermediate_data_baseline.get('top_k'),
+                product_to_category_map,
+                k,
+                title="Baseline Model: Top Recommended Categories"
+            ).to_html(full_html=False, include_plotlyjs=True)
 
         plots_html['compare_metrics'] = plot_metrics_comparison_plotly(
             metrics_main, metrics_baseline
@@ -670,11 +721,17 @@ def generate_html_report(
     html_content += f'<div class="plot-container">{plots_html.get("reward_base", "Plot unavailable.")}</div>'
     html_content += f'<div class="plot-container">{plots_html.get("recs_base", "Plot unavailable.")}</div>'
     html_content += f'<div class="plot-container">{plots_html.get("q_base", "Plot unavailable.")}</div>'
+    # Show category distribution for baseline
+    if 'cats_base' in plots_html:
+        html_content += f'<div class="plot-container">{plots_html.get("cats_base")}</div>'
     # --- Main Model Plots ---
     html_content += "<h2>Main Model Analysis</h2>"
     html_content += f'<div class="plot-container">{plots_html.get("reward_main", "Plot unavailable.")}</div>'
     html_content += f'<div class="plot-container">{plots_html.get("recs_main", "Plot unavailable.")}</div>'
     html_content += f'<div class="plot-container">{plots_html.get("q_main", "Plot unavailable.")}</div>'
+    # Show category distribution for main
+    if 'cats_main' in plots_html:
+        html_content += f'<div class="plot-container">{plots_html.get("cats_main")}</div>'
     # --- HTML Footer ---
     html_content += """
 </body>
@@ -694,6 +751,7 @@ def calculate_all_metrics_and_report(
         test_df: pd.DataFrame,
         k: int,
         settings,
+        product_to_category_map: Optional[Dict[int, int]] = None,
         policy_net_baseline=None,
         trainer_baseline=None,
         generate_report: bool = True,
@@ -709,6 +767,7 @@ def calculate_all_metrics_and_report(
         test_df: DataFrame for test session events.
         k: K value for ranking metrics.
         settings: Project settings object.
+        product_to_category_map: Mapping from product IDs to category IDs (optional).
         policy_net_baseline: Trained baseline policy network (optional).
         trainer_baseline: Trainer for the baseline model (optional).
         generate_report: Whether to generate the HTML report.
@@ -727,7 +786,8 @@ def calculate_all_metrics_and_report(
         test_dataloader=test_dataloader,
         test_df=test_df.copy(),
         k=k,
-        settings=settings
+        settings=settings,
+        product_to_category_map=product_to_category_map
     )
     logger.info("Baseline Model Metrics:")
     for name in sorted(metrics_baseline.keys()):
@@ -741,7 +801,8 @@ def calculate_all_metrics_and_report(
         test_dataloader=test_dataloader,
         test_df=test_df,
         k=k,
-        settings=settings
+        settings=settings,
+        product_to_category_map=product_to_category_map
     )
     logger.info("Main Model Metrics:")
     for name in sorted(metrics_main.keys()):
@@ -756,7 +817,31 @@ def calculate_all_metrics_and_report(
             metrics_baseline=metrics_baseline,
             intermediate_data_baseline=intermediate_data_baseline,
             k=k,
-            save_path=report_save_path
+            save_path=report_save_path,
+            product_to_category_map=product_to_category_map
         )
 
     return metrics_main, metrics_baseline
+
+def plot_category_distribution_plotly(
+        top_k_indices: torch.Tensor,
+        product_to_category_map: Dict[int, int],
+        k: int,
+        top_n_categories: int = 20,
+        title: str = "Top Recommended Categories") -> go.Figure:
+    """Creates a Plotly bar chart of the most frequent recommended categories."""
+    logger.info(f"Generating category distribution plot: {title}")
+    if top_k_indices is None or top_k_indices.numel() == 0:
+        logger.warning(f"No recommendations provided for {title}.")
+        return go.Figure(layout_title_text=f"{title} (No Data)")
+    # Flatten item recommendations and map to categories
+    rec_items = top_k_indices.flatten().tolist()
+    rec_cats = [product_to_category_map.get(item) for item in rec_items if product_to_category_map.get(item) is not None]
+    if not rec_cats:
+        return go.Figure(layout_title_text=f"{title} (No Categories)")
+    counts = Counter(rec_cats).most_common(top_n_categories)
+    cats, freqs = zip(*counts)
+    fig = px.bar(x=[str(c) for c in cats], y=list(freqs), title=title,
+                 labels={'x': 'Category ID', 'y': 'Frequency'})
+    fig.update_layout(xaxis_title="Category ID", yaxis_title="Recommendation Frequency")
+    return fig

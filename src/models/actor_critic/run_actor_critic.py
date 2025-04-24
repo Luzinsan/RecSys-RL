@@ -3,16 +3,12 @@ import os
 import sys
 from pathlib import Path
 from typing import Optional
-
 import optuna
-
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 import torch
 from torch.utils.data import DataLoader
 import pandas as pd
-
 
 from src.models.dataclass import SessionTransitionDataset
 from src.models.actor_critic.actor_critic_model import ActorCritic
@@ -32,18 +28,16 @@ def train_final_model(model_cls,
                       model_save_path: Optional[str] = None):
     logger.info(f"Initializing model '{model_cls.__name__}'...")
     policy_net = model_cls(**model_params).to(settings.DEVICE)
-    target_net = model_cls(**model_params).to(settings.DEVICE)
 
     trainer = ActorCriticTrainer(
-        policy_net=policy_net,
-        target_net=target_net,
+        model=policy_net,
         **trainer_params
     )
 
     logger.info(f"Starting final training for {final_epochs} epochs...")
     for epoch in range(final_epochs):
-        epoch_train_loss = trainer.train_epoch(train_dataloader)
-        logger.info(f"Final Training Epoch {epoch+1}/{final_epochs} finished. Train Loss: {epoch_train_loss:.4f}")
+        train_stats = trainer.train_epoch(train_dataloader)
+        logger.info(f"Final Training Epoch {epoch+1}/{final_epochs} finished. Train Loss: {train_stats['policy_loss']:.4f}, {train_stats['value_loss']:.4f}, {train_stats['entropy']:.4f}")
     logger.info("Final training finished.")
 
     os.makedirs(Path(model_save_path).parent, exist_ok=True)
@@ -53,31 +47,61 @@ def train_final_model(model_cls,
     return policy_net, trainer
 
 
+class PolicyWrapper(torch.nn.Module):
+    def __init__(self, ac_model):
+        super().__init__()
+        self.ac_model = ac_model
+    def forward(self, *args):
+        logits, _ = self.ac_model(*args)
+        return logits
+    
+    
+class EvalTrainerWrapper:
+    def __init__(self, trainer):
+        self.trainer = trainer
+    def evaluate(self, dataloader):
+        stats = self.trainer.evaluate(dataloader)
+        
+        return stats.get('policy_loss', 0.0) + stats.get('value_loss', 0.0)
+    def __getattr__(self, name):
+        return getattr(self.trainer, name)
+    
+
+class RandomActorCritic(torch.nn.Module):
+    def __init__(self, num_products):
+        super().__init__()
+        self.num_products = num_products
+        self.dummy = torch.nn.Parameter(torch.zeros(1))
+
+    def forward(self, state_history, state_length, state_numerical_features, state_brand_idx, state_holiday_idx):
+        batch_size = state_history.size(0)
+        logits = torch.rand(batch_size, self.num_products, device=settings.DEVICE)
+        values = torch.rand(batch_size, device=settings.DEVICE)
+        return logits, values
+    
+
 
 if __name__ == '__main__':
-    # --- Настройки
+    
     MAIN_MODEL_STUDY_NAME = 'RecSys_Actor_critic_val'
     BASELINE_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_fixed_reward'
     STUDY_DB_PATH = 'sqlite:///optuna_study.db'
-    SAVE_DIR = "src/models/trained_models"
+    SAVE_DIR = "src/models/actor_critic/trained_models"
     os.makedirs(SAVE_DIR, exist_ok=True)
 
     REPORT_SAVE_PATH = os.path.join(SAVE_DIR, "evaluation_report.html")
-    MAIN_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_recommender_final.pth")
-    BASELINE_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_recommender_with_cat_final.pth")
+    MAIN_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "0.pth")
+    BASELINE_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "actor_critic_final.pth")
 
-
-    FINAL_EPOCHS = 30
+    FINAL_EPOCHS = 10
     METRICS_K = 10
     DATA_LIMIT = 10000
     TRAIN_SPLIT = 0.85
     
-    
     logger = setup_logger(level=logging.INFO)
     setup_seed(settings.RANDOM_SEED)
     logger.info(f"Running final evaluation script. Device: {settings.DEVICE}")
-
-    # --- 1. Загрузка лучших параметров ---
+    
     logger.info(f"Loading study '{MAIN_MODEL_STUDY_NAME}'...")
     study_main = optuna.load_study(study_name=MAIN_MODEL_STUDY_NAME, storage=STUDY_DB_PATH)
     params_main = study_main.best_trial.params
@@ -90,28 +114,32 @@ if __name__ == '__main__':
     params_baseline['lr'] /= 100
     logger.info(f"Best params for Baseline Model ({study_baseline.best_trial.number}): {params_baseline}")
     
-    
-    # --- 2. Загрузка и подготовка данных ---
     logger.info("Loading data...")
-    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY event_time LIMIT 100")
+    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY event_time")
     logger.info(f"Data loaded: {len(df)} rows")
     df['event_time'] = pd.to_datetime(df['event_time'])
-    # --- 3. Разделение на Train/Test ---
+    
     n_rows = len(df)
     train_split_idx = int(n_rows * TRAIN_SPLIT)
     df_train = df[:train_split_idx].copy()
+    product_to_category_map = (
+        df_train[['product_id_idx', 'category_id']]
+            .drop_duplicates(subset=['product_id_idx'])
+            .set_index('product_id_idx')['category_id']
+            .to_dict()
+    )
     df_test = df[train_split_idx:].copy()
     logger.info(f"Data split: Train={len(df_train)}, Test={len(df_test)}")
     del df
 
-    # --- 4. Определение размеров словарей (по TRAIN) ---
+    
     NUM_PRODUCTS = df_train['product_id_idx'].max() + 1
     NUM_BRANDS = df_train['brand'].max() + 1
     NUM_HOLIDAYS = df_train['holiday_name'].max() + 1
     NUM_NUMERICAL_FEATURES = len(settings.NUMERICAL_FEATURE_COLUMNS)
     logger.info(f"Num products: {NUM_PRODUCTS}, Brands: {NUM_BRANDS}, Holidays: {NUM_HOLIDAYS}")
 
-    # --- 5. Создание Datasets  ---
+    
     ds = SessionTransitionDataset(
         df_train,
         numerical_feature_cols=settings.NUMERICAL_FEATURE_COLUMNS,
@@ -121,73 +149,82 @@ if __name__ == '__main__':
         reward_map=settings.REWARD_MAP,
         default_reward=settings.DEFAULT_REWARD
     )
-    loader = DataLoader(ds, batch_size=32, shuffle=True, num_workers=0)
-
-    # --- 4. Модель и тренер ---
-    model = ActorCritic(
-        num_products=NUM_PRODUCTS,
-        product_embedding_dim=params_main['product_embedding_dim'],
-        gru_hidden_size=params_main['gru_hidden_size'],
+    train_loader = DataLoader(ds, batch_size=params_main['batch_size'], shuffle=True, num_workers=8)
+    
+    ds_test = SessionTransitionDataset(
+        df_test,
+        numerical_feature_cols=settings.NUMERICAL_FEATURE_COLUMNS,
+        categorical_feature_cols=settings.CATEGORICAL_FEATURE_COLUMNS,
+        max_history_length=settings.MAX_HISTORY_LENGTH,
         padding_idx=settings.PADDING_IDX,
-        num_brands=NUM_BRANDS,
-        brand_embedding_dim=params_main['brand_embedding_dim'],
-        num_holidays=NUM_HOLIDAYS,
-        holiday_embedding_dim=params_main['holiday_embedding_dim'],
-        num_numerical_features=NUM_NUMERICAL_FEATURES,
-        intermediate_layer_size=params_main['intermediate_layer_size']
+        reward_map=settings.REWARD_MAP,
+        default_reward=settings.DEFAULT_REWARD
     )
-    trainer = ActorCriticTrainer(
-        model=model,
-        optimizer_cls=torch.optim.Adam,
-        lr=params_main['lr'],
-        gamma=settings.GAMMA,
+    test_loader = DataLoader(ds_test, batch_size=params_main['batch_size'], shuffle=False, num_workers=8)
+
+    
+    model_params = {
+        'num_products': NUM_PRODUCTS,
+        'product_embedding_dim': params_main['product_embedding_dim'],
+        'gru_hidden_size': params_main['gru_hidden_size'],
+        'padding_idx': settings.PADDING_IDX,
+        'num_brands': NUM_BRANDS,
+        'brand_embedding_dim': params_main['brand_embedding_dim'],
+        'num_holidays': NUM_HOLIDAYS,
+        'holiday_embedding_dim': params_main['holiday_embedding_dim'],
+        'num_numerical_features': NUM_NUMERICAL_FEATURES,
+        'intermediate_layer_size': params_main['intermediate_layer_size']
+    }
+    trainer_params = {
+        'optimizer_cls': torch.optim.AdamW,
+        'lr': params_main['lr']/100,
+        'gamma': params_main['gamma'],
+        'value_coef': params_main['value_coef'],
+        'entropy_coef': params_main['entropy_coef'],
+        'device': settings.DEVICE
+    }
+
+    policy_net, trainer = train_final_model(
+        ActorCritic,
+        model_params,
+        trainer_params,
+        train_loader,
+        FINAL_EPOCHS,
+        MAIN_MODEL_SAVE_PATH
+    )
+
+    train_stats = trainer.train_epoch(train_loader)
+    print("Train stats:", train_stats)
+    eval_stats = trainer.evaluate(train_loader)
+    print("Eval stats:", eval_stats)
+
+    policy_model = PolicyWrapper(policy_net)
+    eval_trainer = EvalTrainerWrapper(trainer)
+
+    random_ac_model = RandomActorCritic(NUM_PRODUCTS)
+    baseline_policy = PolicyWrapper(random_ac_model)
+    baseline_ac_trainer_raw = ActorCriticTrainer(
+        model=random_ac_model,
+        optimizer_cls=torch.optim.AdamW,
+        lr=0.0,
+        gamma=params_main['gamma'],
         value_coef=params_main['value_coef'],
         entropy_coef=params_main['entropy_coef'],
         device=settings.DEVICE
     )
+    baseline_trainer = EvalTrainerWrapper(baseline_ac_trainer_raw)
 
-    # --- 5. Обучение и первичная оценка ---
-    train_stats = trainer.train_epoch(loader)
-    print("Train stats:", train_stats)
-    eval_stats  = trainer.evaluate(loader)
-    print("Eval stats:", eval_stats)
-
-    # --- 6. Обёртки для evaluate.py ---
-    # policy_net должен возвращать только logits
-    class PolicyWrapper(torch.nn.Module):
-        def __init__(self, ac_model):
-            super().__init__()
-            self.ac_model = ac_model
-        def forward(self, *args):
-            logits, _ = self.ac_model(*args)
-            return logits
-
-    policy_model = PolicyWrapper(model)
-
-    # trainer.evaluate должен возвращать float loss
-    class EvalTrainerWrapper:
-        def __init__(self, trainer):
-            self.trainer = trainer
-        def evaluate(self, dataloader):
-            stats = self.trainer.evaluate(dataloader)
-            # объединяем policy+value loss
-            return stats.get('policy_loss', 0.0) + stats.get('value_loss', 0.0)
-        def __getattr__(self, name):
-            return getattr(self.trainer, name)
-
-    eval_trainer = EvalTrainerWrapper(trainer)
-
-    # --- 7. Полная оценка и отчёт ---
     metrics_main, metrics_baseline = calculate_all_metrics_and_report(
         policy_net=policy_model,
         trainer=eval_trainer,
-        test_dataloader=loader,
+        test_dataloader=test_loader,
         test_df=df_test,
         k=METRICS_K,
         settings=settings,
-        policy_net_baseline=policy_model,
-        trainer_baseline=eval_trainer,
+        product_to_category_map=product_to_category_map,
+        policy_net_baseline=baseline_policy,
+        trainer_baseline=baseline_trainer,
         generate_report=True,
-        report_save_path="ac_evaluation_report.html"
+        report_save_path=REPORT_SAVE_PATH
     )
     print("Final Metrics:", metrics_main)

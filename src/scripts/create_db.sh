@@ -16,7 +16,7 @@ for datafile in "datasets/prepared4db"/events_*.csv; do
   fi
 done
 
-echo "Загрузка данных завершена."
+echo "Data loading completed."
 
 psql -U postgres -d recsys -c "ALTER TABLE e_commerce.events ADD PRIMARY KEY (event_time, product_id, user_session);"
 

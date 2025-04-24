@@ -51,7 +51,7 @@ def train_final_model(model_cls,
 
 
 if __name__ == '__main__':
-    # --- Настройки
+    
     MAIN_MODEL_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_fixed_reward'
     BASELINE_STUDY_NAME = 'RecSys_dqn_recommender_val_with_category_reward'
     STUDY_DB_PATH = 'sqlite:///optuna_study.db'
@@ -62,18 +62,15 @@ if __name__ == '__main__':
     MAIN_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_recommender_final.pth")
     BASELINE_MODEL_SAVE_PATH = os.path.join(SAVE_DIR, "dqn_recommender_with_cat_final.pth")
 
-
-    FINAL_EPOCHS = 50
+    FINAL_EPOCHS = 20
     METRICS_K = 20
     DATA_LIMIT = 10000
     TRAIN_SPLIT = 0.85
-    
     
     logger = setup_logger(level=logging.INFO)
     setup_seed(settings.RANDOM_SEED)
     logger.info(f"Running final evaluation script. Device: {settings.DEVICE}")
 
-    # --- 1. Загрузка лучших параметров ---
     logger.info(f"Loading study '{MAIN_MODEL_STUDY_NAME}'...")
     study_main = optuna.load_study(study_name=MAIN_MODEL_STUDY_NAME, storage=STUDY_DB_PATH)
     params_main = study_main.best_trial.params
@@ -86,13 +83,11 @@ if __name__ == '__main__':
     params_baseline['lr'] /= 100
     logger.info(f"Best params for Baseline Model ({study_baseline.best_trial.number}): {params_baseline}")
     
-    
-    # --- 2. Загрузка и подготовка данных ---
     logger.info("Loading data...")
-    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY user_id, event_time")
+    df = PostgresHandler.send(f"SELECT * FROM e_commerce.events_encoded ORDER BY user_id, event_time LIMIT 1000")
     logger.info(f"Data loaded: {len(df)} rows")
     df['event_time'] = pd.to_datetime(df['event_time'])
-    # --- 3. Разделение на Train/Test ---
+    
     n_rows = len(df)
     train_split_idx = int(n_rows * TRAIN_SPLIT)
     df_train = df[:train_split_idx].copy()
@@ -100,14 +95,14 @@ if __name__ == '__main__':
     logger.info(f"Data split: Train={len(df_train)}, Test={len(df_test)}")
     del df
 
-    # --- 4. Определение размеров словарей (по TRAIN) ---
+    
     NUM_PRODUCTS = df_train['product_id_idx'].max() + 1
     NUM_BRANDS = df_train['brand'].max() + 1
     NUM_HOLIDAYS = df_train['holiday_name'].max() + 1
     NUM_NUMERICAL_FEATURES = len(settings.NUMERICAL_FEATURE_COLUMNS)
     logger.info(f"Num products: {NUM_PRODUCTS}, Brands: {NUM_BRANDS}, Holidays: {NUM_HOLIDAYS}")
 
-    # --- 5. Создание Datasets  ---
+    
     print(df_train.columns)
     product_to_category_map = df_train.drop_duplicates(
         subset=['product_id_idx'])\
@@ -133,7 +128,7 @@ if __name__ == '__main__':
     test_dataset = SessionTransitionDataset(df_test, **dataset_creation_params)
     logger.info(f"Test dataset prepared with {len(test_dataset)} transitions.")
 
-    # --- 6. Подготовка параметров для моделей и тренера ---
+    
     common_model_params = {
         'num_products': NUM_PRODUCTS,
         'padding_idx': settings.PADDING_IDX,
@@ -162,7 +157,7 @@ if __name__ == '__main__':
         'gamma': params_baseline['gamma'],
         'target_update_freq': params_baseline['target_update_freq']
     }
-    # Основная модель
+    
     model_params_main = {
         **common_model_params,
         'product_embedding_dim': params_main['gru_hidden_size'],
@@ -178,7 +173,7 @@ if __name__ == '__main__':
         'target_update_freq': params_main['target_update_freq']
     }
     
-    # --- 7. Создание DataLoaders  ---
+    
     dataloader_creation_params = {
         'collate_fn': pad_collate_fn,
         'num_workers': settings.NUM_WORKERS,
@@ -189,24 +184,19 @@ if __name__ == '__main__':
     train_dataloader = DataLoader(train_dataset, batch_size=train_batch_size, shuffle=True, **dataloader_creation_params)
     test_dataloader = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False, **dataloader_creation_params)
    
-    # --- 9. Обучение Основной Модели  ---
+    
     logger.info("="*20 + " Training Main Model " + "="*20)
     policy_net_main, trainer_main = train_final_model(
         DQNRecommender, model_params_main, trainer_params_main, train_dataloader, FINAL_EPOCHS,
         model_save_path=MAIN_MODEL_SAVE_PATH
     )
 
-    # --- 8. Обучение Baseline Модели  ---
     logger.info("="*20 + " Training Baseline Model " + "="*20)
     policy_net_baseline, trainer_baseline = train_final_model(
         DQNBaseline, model_params_baseline, trainer_params_baseline, train_dataloader, 10,
         model_save_path=BASELINE_MODEL_SAVE_PATH
     )
-
     
-
-
-    # --- 10. Оценка и Генерация Отчета ---
     logger.info("="*20 + " Evaluating Models and Generating Report " + "="*20)
     metrics_main_final, metrics_baseline_final = calculate_all_metrics_and_report(
         policy_net=policy_net_main,
@@ -215,13 +205,14 @@ if __name__ == '__main__':
         test_df=df_test,
         k=METRICS_K,
         settings=settings,
+        product_to_category_map=product_to_category_map,
         policy_net_baseline=policy_net_baseline,
         trainer_baseline=trainer_baseline,
         generate_report=True,
         report_save_path=REPORT_SAVE_PATH
     )
 
-    # --- 11. Вывод сравнения в лог---
+    
     logger.info("="*20 + " Final Comparison (Log) " + "="*20)
     if metrics_baseline_final:
         all_metric_keys = sorted(list(set(metrics_main_final.keys()) | set(metrics_baseline_final.keys())))

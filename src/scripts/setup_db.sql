@@ -15,12 +15,10 @@ CREATE TABLE e_commerce.events (
 );
 
 
--- Одиночные на events 
 CREATE INDEX IF NOT EXISTS idx_events_user_id ON e_commerce.events (user_id);
 CREATE INDEX IF NOT EXISTS idx_events_product_id ON e_commerce.events (product_id);
 CREATE INDEX IF NOT EXISTS idx_events_event_time ON e_commerce.events (event_time);
 CREATE INDEX IF NOT EXISTS idx_events_user_session ON e_commerce.events (user_session);
--- Составные на events
 CREATE INDEX IF NOT EXISTS idx_events_user_time ON e_commerce.events (user_id, event_time);
 CREATE INDEX IF NOT EXISTS idx_events_product_time ON e_commerce.events (product_id, event_time);
 CREATE INDEX IF NOT EXISTS idx_events_category_time ON e_commerce.events (category_code, event_time);

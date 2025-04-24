@@ -3,8 +3,8 @@ from typing import Dict, List, Optional
 
 import torch
 
-# Класс для хранения переменных среды проекта
-# Определены переменные, ожидаемые типы и дефолтные значения
+
+
 class Settings(BaseSettings):
     DB_NAME: str = 'recsys'
     DB_USER: str = 'postgres'
@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     DB_HOST: str = 'localhost'
     DB_PORT: int = 5432
 
-    PADDING_IDX: int = 0              # Индекс для паддинга
+    PADDING_IDX: int = 0              
     RANDOM_SEED: int = 42
     DEVICE: torch.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     NUM_WORKERS: int = 8
@@ -29,16 +29,16 @@ class Settings(BaseSettings):
     CATEGORICAL_FEATURE_COLUMNS: List[str] = [
         'brand', 'holiday_name'
     ]
-    # Параметры Модели и RL
-    MAX_HISTORY_LENGTH: int = 100      # Макс. длина истории продуктов для состояния
-    MIN_HISTORY_LENGTH: int = 10       # Минимальная длина истории продуктов для перехода
-    EMBEDDING_DIM: int = 64           # Размерность эмбеддингов продуктов
+    
+    MAX_HISTORY_LENGTH: int = 100      
+    MIN_HISTORY_LENGTH: int = 10       
+    EMBEDDING_DIM: int = 64           
 
-    # Награды
+    
     REWARD_MAP: Dict[str, float] = {'view': 0.1, 'cart': 0.3, 'purchase': 0.5}
-    DEFAULT_REWARD: float = -0.1
-    CATEGORY_MATCH_REWARD: float = 0.2
-    # Параметры Обучения
+    DEFAULT_REWARD: float = -0.5
+    CATEGORY_MATCH_REWARD: float = 0.7
+    
     LEARNING_RATE: float = 1e-6
     GAMMA: float = 0.99
     BATCH_SIZE: int = 128

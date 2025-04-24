@@ -24,11 +24,11 @@ def pad_collate_fn(batch):
 def setup_logger(name=__name__, 
                  level=logging.INFO):
     """
-    Настройка логгера
+    Setup logger
     
     Args:
-        name: Имя логгера
-        level: Уровень логирования
+        name: Logger name
+        level: Logging level
     """
     logging.basicConfig(level=level, format='%(asctime)s - %(levelname)s - %(message)s')
     
@@ -49,16 +49,16 @@ def setup_logger(name=__name__,
 def load_data(input_path, 
               logger=None):
     """
-    Загрузка данных из файла в формате csv, parquet, pickle, excel.
+    Load data from file in csv, parquet, pickle, excel format.
     
     Args:
-        input_path: Путь к файлу данных
-        logger: Объект логгера (опционально)
+        input_path: Path to data file
+        logger: Logger object (optional)
     """
     if logger is None:
         logger = setup_logger()
     
-    logger.info(f"Загрузка данных из {input_path}")
+    logger.info(f"Loading data from {input_path}")
     
     try:
         file_ext = os.path.splitext(input_path)[-1].lower()
@@ -88,17 +88,17 @@ def save_data(df: pd.DataFrame,
               index: bool = False, 
               logger: logging.Logger = None):
     """
-    Сохранение DataFrame в файл.
+    Save DataFrame to file.
     
     Args:
-        df: pandas.DataFrame для сохранения
-        output_path: Путь для сохранения файла
-        index: Включать ли индекс при сохранении
-        logger: Объект логгера (опционально)
+        df: pandas.DataFrame to save
+        output_path: Path to save file
+        index: Include index when saving
+        logger: Logger object (optional)
     """
     if logger is None:
         logger = setup_logger()
-    logger.info(f"Сохранение данных в {output_path}")
+    logger.info(f"Saving data to {output_path}")
     try:
         file_ext = os.path.splitext(output_path)[1].lower()
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
@@ -111,9 +111,9 @@ def save_data(df: pd.DataFrame,
         elif file_ext == '.xlsx' or file_ext == '.xls':
             df.to_excel(output_path, index=index)
         else:
-            raise ValueError(f"Неподдерживаемый формат файла: {file_ext}")
-        logger.info(f"Данные успешно сохранены. Размер: {df.shape}")
+            raise ValueError(f"Unsupported file format: {file_ext}")
+        logger.info(f"Data saved successfully. Size: {df.shape}")
     except Exception as e:
-        logger.error(f"Ошибка при сохранении данных: {str(e)}")
+        logger.error(f"Error saving data: {str(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise 
