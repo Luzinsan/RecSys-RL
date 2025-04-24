@@ -5,11 +5,11 @@ from torch.distributions import Categorical
 
 class ActorCritic(nn.Module):
     """
-    Enhanced Actor-Critic model with:
-    - Layer normalization
-    - Dropout for regularization
-    - Improved feature processing
-    - Separate policy and value networks
+    Actor-Critic model for recommendation system:
+    - Policy network (Actor) for action selection
+    - Value network (Critic) for state value estimation
+    - GRU for sequence processing
+    - Feature embeddings and processing
     """
     def __init__(
         self,
@@ -22,8 +22,7 @@ class ActorCritic(nn.Module):
         num_holidays: int,
         holiday_embedding_dim: int,
         num_numerical_features: int,
-        intermediate_layer_size: int,
-        dropout_rate: float = 0.1
+        intermediate_layer_size: int
     ):
         super().__init__()
         # Embeddings
@@ -31,42 +30,33 @@ class ActorCritic(nn.Module):
         self.brand_embedding = nn.Embedding(num_brands, brand_embedding_dim)
         self.holiday_embedding = nn.Embedding(num_holidays, holiday_embedding_dim)
         
-        # GRU with layer normalization
+        # Initialize embeddings
+        nn.init.xavier_uniform_(self.product_embedding.weight)
+        nn.init.xavier_uniform_(self.brand_embedding.weight)
+        nn.init.xavier_uniform_(self.holiday_embedding.weight)
+        
+        # GRU for sequence processing
         self.gru = nn.GRU(product_embedding_dim, gru_hidden_size, batch_first=True)
-        self.gru_norm = nn.LayerNorm(gru_hidden_size)
         
-        # Feature processing
-        self.feature_norm = nn.LayerNorm(num_numerical_features)
-        self.brand_norm = nn.LayerNorm(brand_embedding_dim)
-        self.holiday_norm = nn.LayerNorm(holiday_embedding_dim)
-        
-        # Shared layers
+        # Intermediate layer
         combined_size = gru_hidden_size + num_numerical_features + brand_embedding_dim + holiday_embedding_dim
-        self.shared_layer = nn.Sequential(
-            nn.Linear(combined_size, intermediate_layer_size),
-            nn.LayerNorm(intermediate_layer_size),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate)
-        )
+        self.inter = nn.Linear(combined_size, intermediate_layer_size)
         
-        # Policy head
-        self.policy_head = nn.Sequential(
-            nn.Linear(intermediate_layer_size, intermediate_layer_size // 2),
-            nn.LayerNorm(intermediate_layer_size // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(intermediate_layer_size // 2, num_products)
-        )
+        # Policy and value heads
+        self.policy_head = nn.Linear(intermediate_layer_size, num_products)
+        self.value_head = nn.Linear(intermediate_layer_size, 1)
         
-        # Value head
-        self.value_head = nn.Sequential(
-            nn.Linear(intermediate_layer_size, intermediate_layer_size // 2),
-            nn.LayerNorm(intermediate_layer_size // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout_rate),
-            nn.Linear(intermediate_layer_size // 2, 1)
-        )
-
+        # Initialize weights
+        self._init_weights()
+    
+    def _init_weights(self):
+        """Initialize weights for better training stability."""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+    
     def forward(self,
                 state_history: torch.Tensor,
                 lengths: torch.Tensor,
@@ -78,19 +68,18 @@ class ActorCritic(nn.Module):
         emb = self.product_embedding(state_history)
         packed = nn.utils.rnn.pack_padded_sequence(emb, lengths_cpu, batch_first=True, enforce_sorted=False)
         _, h_n = self.gru(packed)
-        h = self.gru_norm(h_n.squeeze(0))
+        h = h_n.squeeze(0)  # [B, hidden]
         
         # Process categorical features
-        b = self.brand_norm(self.brand_embedding(brand_idx))
-        h_emb = self.holiday_norm(self.holiday_embedding(hol_idx))
-        num_feats = self.feature_norm(num_feats)
+        b = self.brand_embedding(brand_idx)     # [B, brand_dim]
+        h_emb = self.holiday_embedding(hol_idx) # [B, hol_dim]
         
         # Combine features
         x = torch.cat([h, num_feats, b, h_emb], dim=1)
-        x = self.shared_layer(x)
+        x = F.relu(self.inter(x))
         
         # Get policy and value outputs
-        logits = self.policy_head(x)
-        value = self.value_head(x).squeeze(-1)
+        logits = self.policy_head(x)            # [B, num_products]
+        value = self.value_head(x).squeeze(-1)  # [B]
         
         return logits, value
