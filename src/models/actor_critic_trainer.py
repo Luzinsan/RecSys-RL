@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.distributions import Categorical
+import tqdm
 
 class ActorCriticTrainer:
     """
@@ -28,7 +29,7 @@ class ActorCriticTrainer:
     def train_epoch(self, dataloader):
         self.model.train()
         pl, vl, ent = 0.0, 0.0, 0.0
-        for batch in dataloader:
+        for batch in tqdm.tqdm(dataloader, desc="Training epoch"):
             b = {k: v.to(self.device) for k, v in batch.items()}
             # forward
             inp = (b['state_history'], b['state_length'],
@@ -63,7 +64,7 @@ class ActorCriticTrainer:
         self.model.eval()
         pl, vl = 0.0, 0.0
         with torch.no_grad():
-            for batch in dataloader:
+            for batch in tqdm.tqdm(dataloader, desc="Evaluating"):
                 b = {k: v.to(self.device) for k, v in batch.items()}
                 inp = (b['state_history'], b['state_length'],
                        b['state_numerical_features'], b['state_brand_idx'], b['state_holiday_idx'])
